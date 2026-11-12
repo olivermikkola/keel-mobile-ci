@@ -1,0 +1,61 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    name: Simulator tests
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Prepare pinned runtime and fixture model
+        run: |
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Build and test native UI
+        run: bash scripts/test-ios-simulator.sh -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-results
+          path: artifacts/
+          if-no-files-found: warn
+
+  device-compile:
+    name: Unsigned iPhone compile
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Prepare pinned runtime
+        run: |
+          bash scripts/prepare-llama.sh
+          # project.yml lists build/fixtures for the test target; the device
+          # compile builds only the app, so an empty folder is enough.
+          mkdir -p build/fixtures
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Compile the real iPhone target
+        run: bash scripts/build-ios-device.sh
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-device-compile-log
+          path: artifacts/
+          if-no-files-found: warn
