@@ -1,0 +1,40 @@
+{
+  "4B": [
+    {
+      "filename": "Ternary-Bonsai-2-4B-Q2_0.gguf",
+      "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf/resolve/50ebba61be85e5be07e8083db468ace0fc1bac43/Ternary-Bonsai-2-4B-Q2_0.gguf",
+      "bytes": 1212103520,
+      "sha256": "64a5183b44921bdb5ac4a6f5f92007821d6ebe5c66997d3c147fd214ab9433d4"
+    }
+  ],
+  "lfm3": [
+    {
+      "filename": "LFM3-1.7B-Q4_K_M.gguf",
+      "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/cd0c74c575b5c416f3011b5b4c298077f26ca8c2/LFM3-1.7B-Q4_K_M.gguf",
+      "bytes": 1099627808,
+      "sha256": "3793e1e6e2266919d6e015287221b41100175a98eddaba92e111aed3b05c93c4"
+    }
+  ],
+  "lfm3-vl": [
+    {
+      "filename": "LFM3-VL-2B-Q4_K_M.gguf",
+      "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/1add221a5ea6c047fcf1eaaf2d247939d7cf8849/LFM3-VL-2B-Q4_K_M.gguf",
+      "bytes": 1099627808,
+      "sha256": "56dac2e192ff0d9ab8507f4f1aeb4aed0463449bbbefaac79497f041c95f21eb"
+    },
+    {
+      "filename": "mmproj-LFM3-VL-2B-Q8_0.gguf",
+      "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/1add221a5ea6c047fcf1eaaf2d247939d7cf8849/mmproj-LFM3-VL-2B-Q8_0.gguf",
+      "bytes": 203031872,
+      "sha256": "c5c5b58d544a18da919172d2d0368090ea1a4a351b6feb7f8a326a264a5918ab"
+    }
+  ],
+  "minicpm5": [
+    {
+      "filename": "MiniCPM5-2B-Q4_K_M.gguf",
+      "url": "https://huggingface.co/openbmb/MiniCPM5-2B-GGUF/resolve/8ad02b786ab81e33d465e1c80562640c55ab2877/MiniCPM5-2B-Q4_K_M.gguf",
+      "bytes": 1561318368,
+      "sha256": "ec2d5801640099e97d8d7e8003ad4d81f336e757811f03a26173dddf386602fd"
+    }
+  ]
+}
