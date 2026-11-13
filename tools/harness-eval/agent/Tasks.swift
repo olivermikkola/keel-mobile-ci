@@ -1,0 +1,98 @@
+import Foundation
+
+/// One eval task. `check` judges the outcome without a model:
+/// read tasks by the final answer and what was actually opened, edit tasks by
+/// running a hidden Python check against the files the agent left behind.
+struct EvalTask {
+    enum Kind: String { case read, edit, local }
+    let id: String
+    let kind: Kind
+    /// `repo` is this repository at the pinned commit; `shop` is fixtures/shop.
+    let fixture: String
+    let prompt: String
+    /// Read tasks: the answer must contain one string from every group (ignoring case).
+    var answer: [[String]] = []
+    /// Read tasks: at least one of these files must have been read or matched by a search.
+    var evidence: [String] = []
+    /// Local tasks: files attached to the message, as the app sends them.
+    var attachments: [(path: String, text: String)] = []
+    /// Local tasks: judges the chat's files after every proposal was applied, the final answer and the tool steps taken.
+    var check: ((TaskWorkspace, String, Int) -> Bool)? = nil
+}
+
+private func file(_ workspace: TaskWorkspace, _ path: String) -> String? { try? workspace.read(path).text }
+private func htmlFiles(_ workspace: TaskWorkspace) -> [String] {
+    workspace.textFiles().filter { $0.path.hasSuffix(".html") }.map(\.text)
+}
+
+/// The commit of this repository that the read tasks ask about. Fixed, so
+/// results stay comparable while the code moves on.
+let pinnedRepositoryCommit = "64fdebdc617dbaed80927d6fdac202b848ff593d"
+
+let evalTasks: [EvalTask] = [
+    EvalTask(id: "readme", kind: .read, fixture: "repo", prompt: "What does this repository do? Answer from the README.",
+             answer: [["iphone", "phone"]], evidence: ["README.md"]),
+    EvalTask(id: "download-resume", kind: .read, fixture: "repo", prompt: "Where is the model download resumed after a pause?",
+             answer: [["ModelTransfer", "ModelLibrary"]], evidence: ["Sources/ModelTransfer.swift", "Sources/ModelLibrary.swift"]),
+    EvalTask(id: "github-client", kind: .read, fixture: "repo", prompt: "Which file defines the GitHub repository client?",
+             answer: [["GitHubRepository.swift"]], evidence: ["Sources/GitHubRepository.swift"]),
+    EvalTask(id: "tool-limit", kind: .read, fixture: "repo", prompt: "How many tool calls can the agent make per message?",
+             answer: [["eight", "8", "16", "sixteen"]], evidence: ["Sources/LocalChat.swift", "Sources/RepositoryAgent.swift", "docs/HARNESS.md", "docs/DIRECTOR_MODE.md", "README.md"]),
+    EvalTask(id: "kv-budget", kind: .read, fixture: "repo", prompt: "Find where the KV cache memory budget is computed.",
+             answer: [["ModelLibrary"]], evidence: ["Sources/ModelLibrary.swift"]),
+    EvalTask(id: "models", kind: .read, fixture: "repo", prompt: "What models can I download in the app?",
+             answer: [["4B"], ["9B"]], evidence: ["Sources/ModelLibrary.swift", "README.md", "docs/ON_DEVICE_PLAN.md"]),
+    EvalTask(id: "simulator-workflow", kind: .read, fixture: "repo", prompt: "Which workflow runs the iOS simulator tests?",
+             answer: [["ios-simulator", "ios.yml", "codemagic"]], evidence: ["codemagic.yaml", "ci/mirror/ios.yml", "AGENTS.md", "docs/CI_MIRROR.md"]),
+    EvalTask(id: "background-stop", kind: .read, fixture: "repo", prompt: "Where does the app stop generating when it goes to the background?",
+             answer: [["LocalChat"]], evidence: ["Sources/LocalChat.swift"]),
+    EvalTask(id: "edit-review", kind: .read, fixture: "repo", prompt: "Explain how edit proposals are reviewed before they apply.",
+             answer: [["review"], ["apply", "applied"]],
+             evidence: ["Sources/LocalChat.swift", "Sources/ProposedFileEdit.swift", "Sources/FileEditReviewView.swift", "Sources/DirectorTools.swift", "docs/REVIEWING_CHANGES.md", "docs/DIRECTOR_MODE.md"]),
+    EvalTask(id: "delete-test", kind: .read, fixture: "repo", prompt: "Is there a test for saved task deletion? Show it.",
+             answer: [["testDeleteOnlyChosenTaskAndKeepLastTaskUsable", "SavedTaskTests"]], evidence: ["Tests/SavedTaskTests.swift", "UITests/SavedTaskUITests.swift"]),
+    EvalTask(id: "license", kind: .read, fixture: "repo", prompt: "What license is this project under?",
+             answer: [["all rights reserved", "proprietary"]], evidence: ["LICENSE", "README.md"]),
+    EvalTask(id: "director-prompt", kind: .read, fixture: "repo", prompt: "Where is the system prompt for Director mode?",
+             answer: [["DirectorTools"]], evidence: ["Sources/DirectorTools.swift"]),
+
+    // A chat with no repository: its own files and the local prompt (Harness/LocalFiles.swift).
+    EvalTask(id: "local-greeting", kind: .local, fixture: "local", prompt: "Hi! What can you help me with?",
+             check: { _, answer, steps in steps == 0 && !answer.isEmpty }),
+    EvalTask(id: "local-capital", kind: .local, fixture: "local", prompt: "What is the capital of Finland?",
+             check: { _, answer, steps in steps == 0 && answer.contains("Helsinki") }),
+    EvalTask(id: "local-page", kind: .local, fixture: "local",
+             prompt: "Make me a simple one-page website for my coffee shop Nordic Bean. Show a menu with three drinks and their prices.",
+             check: { workspace, _, _ in htmlFiles(workspace).contains { $0.contains("Nordic Bean") && $0.lowercased().contains("<html") } }),
+    EvalTask(id: "local-save-note", kind: .local, fixture: "local",
+             prompt: "Write a packing list for a three-day hiking trip and save it as packing-list.md.",
+             check: { workspace, _, _ in (file(workspace, "packing-list.md")?.split(separator: "\n").count ?? 0) >= 5 }),
+    EvalTask(id: "local-csv-question", kind: .local, fixture: "local",
+             prompt: "Which product had the highest total sales in the attached file?",
+             attachments: [(path: "sales.csv", text: "date,product,amount\n2026-11-01,Tea,12\n2026-11-01,Coffee,30\n2026-11-02,Cocoa,25\n2026-11-02,Tea,40\n2026-11-03,Coffee,15\n2026-11-03,Cocoa,20\n")],
+             check: { _, answer, _ in answer.contains("Tea") && answer.contains("52") }),
+    EvalTask(id: "local-edit-attached", kind: .local, fixture: "local",
+             prompt: "In todo.md, mark \"Buy milk\" as done.",
+             attachments: [(path: "todo.md", text: "# Todo\n\n- [ ] Buy milk\n- [ ] Call Anna\n- [ ] Book dentist\n")],
+             check: { workspace, _, _ in
+                 let text = file(workspace, "todo.md") ?? ""
+                 return text.contains("- [x] Buy milk") && text.contains("- [ ] Call Anna") && text.contains("- [ ] Book dentist")
+             }),
+
+    EvalTask(id: "fix-discount", kind: .edit, fixture: "shop",
+             prompt: "apply_discount in shop/pricing.py makes prices higher instead of lower. Fix it."),
+    EvalTask(id: "fix-pagination", kind: .edit, fixture: "shop",
+             prompt: "Each page of the inventory listing is missing its first product. Find the bug and fix it."),
+    EvalTask(id: "add-tax", kind: .edit, fixture: "shop",
+             prompt: "Add a function total_with_tax(cart) to shop/pricing.py. It returns cart.total() multiplied by (1 + TAX_RATE), using TAX_RATE from shop/config.py."),
+    EvalTask(id: "new-coupons", kind: .edit, fixture: "shop",
+             prompt: "Create shop/coupons.py with a function is_valid(code). It returns True only when the code starts with \"KEEL-\" and is exactly 9 characters long, otherwise False."),
+    EvalTask(id: "rename-calc", kind: .edit, fixture: "shop",
+             prompt: "Rename the function calc to line_total everywhere it is defined, imported or called."),
+    EvalTask(id: "remove-legacy", kind: .edit, fixture: "shop",
+             prompt: "shop/legacy.py is no longer used. Delete it and remove its import."),
+    EvalTask(id: "page-size", kind: .edit, fixture: "shop",
+             prompt: "Change the inventory page size from 10 to 20 and update the README, which mentions the page size."),
+    EvalTask(id: "currency", kind: .edit, fixture: "shop",
+             prompt: "Give format_price in shop/pricing.py an optional second parameter named currency. When it is not given, the default currency from the config is used, as now."),
+]
