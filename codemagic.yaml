@@ -1,0 +1,306 @@
+workflows:
+  ios-testflight-enable-existing:
+    name: Unblock one existing Keel internal TestFlight build (manual)
+    instance_type: mac_mini_m2
+    max_build_duration: 5
+    integrations:
+      app_store_connect: MoE
+    scripts:
+      - name: Declare exempt encryption and enable the selected internal build
+        script: |
+          set -euo pipefail
+          python3 scripts/testflight-status.py --enable-internal-build "${KEEL_TESTFLIGHT_BUILD_ID:?Supply the exact Apple build UUID}" --rename-app
+    artifacts:
+      - artifacts/testflight-status.json
+
+  ios-testflight-status:
+    name: Read Apple TestFlight processing and internal-group status
+    instance_type: mac_mini_m2
+    max_build_duration: 12
+    integrations:
+      app_store_connect: MoE
+    scripts:
+      - name: Inspect existing Apple app and builds without uploading
+        script: |
+          set -euo pipefail
+          if [[ -n "${KEEL_WAIT_FOR_BUILD_VERSION:-}" ]]; then
+            python3 scripts/testflight-status.py --wait-for-build-version "$KEEL_WAIT_FOR_BUILD_VERSION"
+          else
+            python3 scripts/testflight-status.py
+          fi
+    artifacts:
+      - artifacts/testflight-status.json
+
+  ios-simulator:
+    name: iOS simulator checks (no Apple account)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Build, test, and capture native UI
+        # Live GitHub is its own gate: shared CI egress exhausts the anonymous
+        # quota independently of source changes. This suite records UI proof
+        # with explicit fixture responses, never labelled as live network proof.
+        script: bash scripts/test-ios-simulator.sh -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+    artifacts:
+      - artifacts/**
+      - build/ios-simulator/Build/Products/Debug-iphonesimulator/KeelMobile.app
+
+  ios-ipad-simulator:
+    name: iPad simulator layout checks (no Apple account)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+      vars:
+        KEEL_SIMULATOR_FAMILY: iPad
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Build, test, and capture native iPad UI
+        # Live GitHub is its own gate: shared CI egress exhausts the anonymous
+        # quota independently of source changes. This suite records UI proof
+        # with explicit fixture responses, never labelled as live network proof.
+        script: bash scripts/test-ios-simulator.sh -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+    artifacts:
+      - artifacts/**
+      - build/ios-simulator/Build/Products/Debug-iphonesimulator/KeelMobile.app
+
+  ios-live-repository:
+    name: Live GitHub repository UI (requires available API quota)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Check public GitHub quota before building
+        script: python3 scripts/check-github-quota.py
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Read live GitHub and restore the attached repository
+        script: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+    artifacts:
+      - artifacts/**
+
+  ios-agent-smoke:
+    name: Real Bonsai repository-agent smoke (1.21GB model, opt-in)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Check public GitHub quota before downloading the model
+        script: python3 scripts/check-github-quota.py
+      - name: Prepare the real catalog model and native project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          bash scripts/prepare-agent-model.sh
+          xcodegen generate --spec project.yml
+      - name: Run real Bonsai with live repository tools
+        script: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests/BonsaiAgentSmokeTests/testRealBonsaiReadsGitHubBeforeAnswering
+    artifacts:
+      - artifacts/**
+
+  ios-model-tool-smoke:
+    name: Real Bonsai with recorded repository responses (1.21GB model, opt-in)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Prepare the real catalog model and native project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          bash scripts/prepare-agent-model.sh
+          xcodegen generate --spec project.yml
+      - name: Run real Bonsai with recorded repository responses
+        script: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests/BonsaiAgentSmokeTests/testRealBonsaiReadsRecordedRepositoryBeforeAnswering -only-testing:KeelMobileTests/BonsaiAgentSmokeTests/testRealBonsaiSearchesRecordedFileBeforeAnswering
+    artifacts:
+      - artifacts/**
+
+  ios-model-complete-download:
+    name: Full native 9B download and SHA verification (2.56GB, opt-in)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Prepare native full-download diagnostic
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          touch build/fixtures/live-model-complete.txt
+          xcodegen generate --spec project.yml
+      - name: Stream and verify the entire pinned model with production code
+        script: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests/ModelTransferTests/testNativeComplete9BDownloadAndVerification
+    artifacts:
+      - artifacts/**
+
+  ios-model-downloads:
+    name: Model pause/resume checks (native, no external GitHub UI)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          touch build/fixtures/live-model-range.txt
+          xcodegen generate --spec project.yml
+      - name: Test downloads, existing unit suite and native model UI
+        script: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests -only-testing:KeelMobileUITests/PairingUITests -only-testing:KeelMobileUITests/ModelDownloadUITests
+    artifacts:
+      - artifacts/**
+
+  ios-navigation:
+    name: On-device and optional-host navigation checks
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Check native unit suite and navigation
+        script: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests -only-testing:KeelMobileUITests/PairingUITests -only-testing:KeelMobileUITests/NavigationUITests
+    artifacts:
+      - artifacts/**
+
+  ios-device-compile:
+    name: iPhone compile check (unsigned, no Apple account)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Compile the real iPhone target
+        script: bash scripts/build-ios-device.sh
+    artifacts:
+      - artifacts/**
+      - build/ios-device/Build/Products/Release-iphoneos/KeelMobile.app
+
+  ios-signed-artifact:
+    name: Signed iPhone archive (uploaded signing files, build only)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.olivermikkola.keelmobile
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Apply signing
+        script: |
+          set -euo pipefail
+          xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          set -euo pipefail
+          xcode-project build-ipa \
+            --project KeelMobile.xcodeproj \
+            --scheme KeelMobile \
+            --archive-xcargs "CURRENT_PROJECT_VERSION=$((BUILD_NUMBER + 1))"
+      - name: Verify signed package without publishing
+        script: |
+          set -euo pipefail
+          python3 scripts/verify-signed-ipa.py build/ios/ipa/*.ipa --source-commit "$(git rev-parse HEAD)"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - artifacts/signed-ipa-proof.json
+      - /tmp/xcodebuild_logs/*.log
+
+  ios-testflight:
+    name: iOS TestFlight (requires Apple integration)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    integrations:
+      app_store_connect: MoE
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.olivermikkola.keelmobile
+    scripts:
+      - name: Generate native Xcode project
+        script: |
+          set -euo pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          bash scripts/prepare-llama.sh
+          bash scripts/prepare-test-model.sh
+          xcodegen generate --spec project.yml
+      - name: Apply signing
+        script: |
+          set -euo pipefail
+          xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          set -euo pipefail
+          # The Apple app predates this Codemagic workflow. Its build counter
+          # must follow Apple's highest build, not this workflow's local index.
+          latest_build=$(app-store-connect get-latest-testflight-build-number 6833182988 --platform IOS --all-versions)
+          [[ "$latest_build" =~ ^[0-9]+$ ]] || { echo "Apple did not return an integer build number."; exit 1; }
+          xcode-project build-ipa \
+            --project KeelMobile.xcodeproj \
+            --scheme KeelMobile \
+            --archive-xcargs "CURRENT_PROJECT_VERSION=$((latest_build + 1))"
+      - name: Verify signed package and export declaration before upload
+        script: python3 scripts/verify-signed-ipa.py build/ios/ipa/*.ipa --source-commit "$(git rev-parse HEAD)"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - artifacts/signed-ipa-proof.json
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        # Upload only; internal testers are added in App Store Connect.
+        submit_to_testflight: false
+        submit_to_app_store: false
