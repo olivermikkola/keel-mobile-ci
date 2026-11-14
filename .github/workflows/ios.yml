@@ -1,0 +1,149 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      model_smoke:
+        description: Real model integration checks (large downloads)
+        type: choice
+        default: none
+        options: [none, all, 4B, lfm3, lfm3-vl, minicpm5]
+
+permissions:
+  contents: read
+
+jobs:
+  harness-linux:
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Harness tests (Linux)
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SQLite headers
+        run: apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev
+      - name: Test the harness package
+        run: swift test
+
+  simulator-runtime:
+    name: Build simulator runtime
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: build/runtime/build-apple/llama.xcframework
+          key: llama-simulator-${{ runner.os }}-${{ runner.arch }}-b12367-${{ hashFiles('scripts/prepare-llama-simulator.sh') }}
+      - name: Prepare the pinned simulator slice
+        run: bash scripts/prepare-llama-simulator.sh
+      - name: Package simulator runtime with framework permissions
+        run: ditto -c -k --keepParent build/runtime/build-apple/llama.xcframework build/runtime/simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime/simulator.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-runtime-build-log
+          path: artifacts/
+          if-no-files-found: ignore
+
+  simulator:
+    needs: simulator-runtime
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Simulator tests
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime
+      - name: Extract simulator runtime
+        run: ditto -x -k build/runtime/simulator.zip build/runtime/build-apple
+      - name: Prepare fixture model
+        run: bash scripts/prepare-test-model.sh
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Build and test native UI
+        run: bash scripts/test-ios-simulator.sh -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-results
+          path: artifacts/
+          if-no-files-found: warn
+
+  device-compile:
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Unsigned iPhone compile
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Prepare pinned runtime
+        run: |
+          bash scripts/prepare-llama.sh
+          # project.yml lists build/fixtures for the test target; the device
+          # compile builds only the app, so an empty folder is enough.
+          mkdir -p build/fixtures
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Compile the real iPhone target
+        run: bash scripts/build-ios-device.sh
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-device-compile-log
+          path: artifacts/
+          if-no-files-found: warn
+
+  model-smoke:
+    needs: simulator-runtime
+    name: Real model (${{ matrix.model }})
+    if: ${{ inputs.model_smoke && inputs.model_smoke != 'none' }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        model: ${{ fromJSON(inputs.model_smoke == 'all' && '["4B","lfm3","lfm3-vl","minicpm5"]' || format('["{0}"]', inputs.model_smoke)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime
+      - name: Extract simulator runtime
+        run: ditto -x -k build/runtime/simulator.zip build/runtime/build-apple
+      - name: Prepare the pinned real model
+        env:
+          SMOKE_MODEL: ${{ matrix.model }}
+        run: python3 scripts/prepare-small-model.py "$SMOKE_MODEL"
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Real inference, tools and vision
+        run: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests/SmallModelSmokeTests
+      - name: Upload real-model results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-model-${{ matrix.model }}
+          path: artifacts/
+          if-no-files-found: warn
