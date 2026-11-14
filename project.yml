@@ -1,0 +1,79 @@
+name: KeelMobile
+options:
+  minimumXcodeGenVersion: 2.44.0
+  deploymentTarget:
+    iOS: '17.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MARKETING_VERSION: '1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    TARGETED_DEVICE_FAMILY: '1,2'
+targets:
+  KeelMobile:
+    type: application
+    platform: iOS
+    info:
+      path: build/KeelMobile-Info.plist
+      properties:
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Keel uses the microphone when you choose offline dictation.
+        NSSpeechRecognitionUsageDescription: Keel turns speech into message text on your iPhone using offline recognition.
+        NSLocalNetworkUsageDescription: Keel connects only to a gateway address you enter. Repository reads use github.com.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.olivermikkola.keelmobile.github
+            CFBundleURLSchemes: [keelmobile]
+    # Harness/ is the KeelHarness package (docs/HARNESS.md), compiled into the app.
+    sources: [Sources, Resources, Harness]
+    dependencies:
+      - framework: build/runtime/build-apple/llama.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.olivermikkola.keelmobile
+        # Simulator builds have no provisioning profile to supply this identity.
+        # Device/TestFlight entitlements still come from Apple's signing profile.
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Simulator.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Keel Mobile
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+  KeelMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+      # The harness tests also run on Linux with `swift test`; here they run
+      # against the phone SDK's own SQLite.
+      - path: HarnessTests
+      - path: UITests/Fixtures/github-recording.json
+        buildPhase: resources
+      - path: build/fixtures
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: KeelMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.olivermikkola.keelmobile.tests
+        GENERATE_INFOPLIST_FILE: YES
+  KeelMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: KeelMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.olivermikkola.keelmobile.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  KeelMobile:
+    build:
+      targets:
+        KeelMobile: all
+    test:
+      targets: [KeelMobileTests, KeelMobileUITests]
