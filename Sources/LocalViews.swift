@@ -22,6 +22,7 @@ struct LocalChatView: View {
     @State private var showingDictation = false
     @StateObject private var speech = ReplySpeech()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if canImport(PhotosUI)
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
     #endif
@@ -137,19 +138,30 @@ struct LocalChatView: View {
                         .accessibilityLabel("Menu")
                 }
                 ToolbarItem(placement: .principal) {
-                    VStack(spacing: 0) {
-                        if chat.activeTitle != "New task" {
-                            Text(chat.activeTitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                        } else if let app = chat.activeApp, chat.repository == nil {
-                            Text(app.title).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Button(action: chooseModel) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "cpu")
+                                .font(.caption)
+                                .accessibilityHidden(true)
+                            Text(models.current.name)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .accessibilityHidden(true)
                         }
-                        Button(action: chooseModel) {
-                            HStack(spacing: 4) {
-                                Text(models.current.name).font(.headline)
-                                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                            }
-                        }.buttonStyle(.plain).disabled(chat.running).accessibilityIdentifier("modelPicker")
+                        .foregroundStyle(KeelStyle.accent)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: 180, minHeight: 44)
+                        .background(KeelStyle.surface, in: Capsule())
+                        .contentShape(Capsule())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(chat.running)
+                    .accessibilityLabel("Model: \(models.current.name)")
+                    .accessibilityHint("Choose an on-device model")
+                    .accessibilityIdentifier("modelPicker")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -234,7 +246,14 @@ struct LocalChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
-                    if chat.messages.isEmpty { welcome }
+                    if chat.messages.isEmpty {
+                        welcome
+                    } else if chat.activeTitle != "New task" {
+                        Text(chat.activeTitle)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     ForEach(chat.messages.filter { $0.isToolCall != true }) { message in
                         transcriptRow(for: message)
                     }
@@ -370,36 +389,65 @@ struct LocalChatView: View {
     }
 
     private var welcome: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            KeelMark().frame(width: 88, height: 88).padding(.leading, -14)
+        VStack(alignment: .leading, spacing: 24) {
+            KeelMark().frame(width: 60, height: 60).padding(.leading, -10)
             let app = chat.repository == nil ? chat.activeApp : nil
             VStack(alignment: .leading, spacing: 12) {
-                Text(app.map { $0.title.uppercased() } ?? "ON THIS IPHONE").font(.caption2.weight(.semibold)).tracking(2).foregroundStyle(KeelStyle.accent)
-                Text(app.map { $0.summary } ?? "What should we\nwork on?")
-                    .font(.system(.largeTitle, design: .rounded).weight(.medium)).tracking(-0.8)
+                Text(app.map { $0.title.uppercased() } ?? "ON THIS IPHONE")
+                    .font(.caption2.weight(.semibold)).tracking(2)
+                    .foregroundStyle(KeelStyle.accent)
+                Text(app.map { $0.summary } ?? "What should we work on?")
+                    .font(.system(.largeTitle).weight(.semibold)).tracking(-0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text("Ask, write, or work with your files. Your model runs on this iPhone.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Ask questions, write, and work with your files. Responses and file tools run on this iPhone.")
-                .foregroundStyle(.secondary)
             if !models.installed.contains(models.selected) {
                 Button(action: chooseModel) {
-                    Text("Choose and download a model").foregroundStyle(KeelStyle.background)
+                    HStack(spacing: 12) {
+                        Text("Choose a model").fontWeight(.semibold)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.down.circle")
+                    }
+                    .padding(16).frame(minHeight: 52)
+                    .foregroundStyle(KeelStyle.background)
+                    .background(KeelStyle.accent, in: RoundedRectangle(cornerRadius: 20))
                 }
-                    .buttonStyle(.borderedProminent).accessibilityIdentifier("setupLocalModel")
+                .buttonStyle(.plain).accessibilityIdentifier("setupLocalModel")
                 Text("Download once, then chat offline. Keep Keel open while it replies.")
                     .font(.footnote).foregroundStyle(.secondary)
             } else {
-                ForEach(app?.starters ?? ["Write or edit", "Explain something", "Work with a file"], id: \.self) { suggestion in
-                    Button { draft = app == nil ? suggestion + ": " : suggestion; composing = true } label: {
-                        HStack { Text(suggestion); Spacer(); Image(systemName: "arrow.up.left") }
-                            .padding(16).background(KeelStyle.surface, in: RoundedRectangle(cornerRadius: 14))
-                    }.buttonStyle(.plain)
+                VStack(spacing: 10) {
+                    ForEach(app?.starters ?? ["Write or edit", "Explain something", "Work with a file"], id: \.self) { suggestion in
+                        Button { draft = app == nil ? suggestion + ": " : suggestion; composing = true } label: {
+                            HStack(spacing: 12) {
+                                Text(suggestion).fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                Image(systemName: "arrow.up.left")
+                                    .foregroundStyle(KeelStyle.accent).accessibilityHidden(true)
+                            }
+                            .font(.body).padding(.horizontal, 16).padding(.vertical, 14)
+                            .frame(minHeight: 52)
+                            .background(KeelStyle.surface, in: RoundedRectangle(cornerRadius: 20))
+                            .contentShape(RoundedRectangle(cornerRadius: 20))
+                        }.buttonStyle(.plain)
+                            .accessibilityHint("Add this prompt to your message")
+                    }
                 }
             }
             if chat.repository != nil {
                 Label("Keel can read this project and propose edits. Review each change before applying it. Publishing is a separate step.", systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-        }.padding(.vertical, 24).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(.top, dynamicTypeSize.isAccessibilitySize ? 8 : 24)
+            .padding(.bottom, 12).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var canSend: Bool {
+        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingAttachments.isEmpty)
+            && !isProcessingAttachment && models.installed.contains(models.selected)
     }
 
     private var composer: some View {
@@ -437,7 +485,7 @@ struct LocalChatView: View {
                 .accessibilityIdentifier("pendingAttachmentsTray")
             }
 
-            HStack(alignment: .bottom, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 4) {
                 Menu {
                     Button { showingSchedule = true } label: {
                         Label("Schedule task", systemImage: "clock")
@@ -469,14 +517,17 @@ struct LocalChatView: View {
                     .accessibilityIdentifier("photoAsTextMenuOption")
                     #endif
                 } label: {
-                    Image(systemName: "plus").fontWeight(.semibold).frame(width: 28, height: 28)
+                    Image(systemName: "plus").fontWeight(.medium).frame(width: 44, height: 44)
                 }
                 .disabled(chat.running || isProcessingAttachment)
                 .accessibilityLabel("Add to chat")
                 .accessibilityIdentifier("composerAddMenu")
 
-                TextField(pendingAttachments.isEmpty ? "Ask anything" : "Ask about attachments…", text: $draft, axis: .vertical)
-                    .lineLimit(1...6).focused($composing).accessibilityIdentifier("localChatInput")
+                TextField(pendingAttachments.isEmpty ? "Ask Keel…" : "Ask about attachments…", text: $draft, axis: .vertical)
+                    .lineLimit(1...6).focused($composing)
+                    .padding(.vertical, 11)
+                    .accessibilityLabel("Message")
+                    .accessibilityIdentifier("localChatInput")
 
                 if chat.running {
                     Button { chat.stop() } label: {
@@ -496,19 +547,19 @@ struct LocalChatView: View {
                             composing = false
                             reviewingEditID = nil
                         }
-                    } label: { Image(systemName: "arrow.up").fontWeight(.bold).frame(width: 28, height: 28) }
-                        .buttonStyle(.borderedProminent).clipShape(Circle())
+                    } label: {
+                        Image(systemName: "arrow.up").font(.body.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                            .foregroundStyle(canSend ? KeelStyle.background : .secondary)
+                            .background(canSend ? KeelStyle.accent : KeelStyle.accent.opacity(0.10), in: Circle())
+                    }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Send message")
-                        .disabled(
-                            (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty)
-                            || isProcessingAttachment
-                            || !models.installed.contains(models.selected)
-                        )
+                        .disabled(!canSend)
                         .accessibilityIdentifier("sendMessageButton")
                 }
             }
-        }.padding(12).background(KeelStyle.surface, in: RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(KeelStyle.accent.opacity(0.18)))
+        }.padding(8).background(KeelStyle.surface, in: RoundedRectangle(cornerRadius: 30))
             .padding(.horizontal).padding(.top, 6).padding(.bottom, 12)
             .background(KeelStyle.background)
     }

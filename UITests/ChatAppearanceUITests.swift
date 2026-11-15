@@ -33,7 +33,9 @@ final class ChatAppearanceUITests: XCTestCase {
         copy.tap()
         XCTAssertTrue(app.buttons["Code copied"].waitForExistence(timeout: 3))
         capture(app, "Keel largest text code controls - recorded UI content")
-        app.openFromMenu("models")
+        let modelPicker = app.buttons["modelPicker"]
+        XCTAssertTrue(modelPicker.isHittable, "The model picker must remain reachable at the largest text size.")
+        modelPicker.tap()
         XCTAssertTrue(app.navigationBars["Models"].waitForExistence(timeout: 5))
         capture(app, "Keel largest text model library")
     }
@@ -48,6 +50,26 @@ final class ChatAppearanceUITests: XCTestCase {
         app.buttons["setupLocalModel"].tap()
         XCTAssertTrue(app.navigationBars["Models"].waitForExistence(timeout: 5))
         capture(app, "Keel dark model library")
+    }
+
+    func testLargeTextWelcomeKeepsSetupAndComposerReachable() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--chat-appearance-fixture", "--appearance-light",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let newChat = app.buttons["New chat"]
+        XCTAssertTrue(newChat.waitForExistence(timeout: 10))
+        newChat.tap()
+        let setup = app.buttons["setupLocalModel"]
+        for _ in 0..<5 where !setup.isHittable { app.swipeUp() }
+        XCTAssertTrue(setup.isHittable, "Model setup must be scrollable into view above the composer.")
+        let add = app.buttons["composerAddMenu"]
+        XCTAssertTrue(add.isHittable)
+        XCTAssertGreaterThanOrEqual(add.frame.height, 44)
+        XCTAssertFalse(app.buttons["sendMessageButton"].isEnabled)
+        capture(app, "Keel paper welcome at largest text size - no model installed")
+        setup.tap()
+        XCTAssertTrue(app.navigationBars["Models"].waitForExistence(timeout: 5))
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {
