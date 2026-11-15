@@ -1,0 +1,36 @@
+import XCTest
+#if canImport(KeelHarness)
+@testable import KeelHarness
+#else
+@testable import KeelMobile
+#endif
+
+final class SamplingProfileTests: XCTestCase {
+    func source(_ relativePath: String) throws -> String {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(relativePath)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// The presets must match the values the app and the eval actually send.
+    /// These checks read the sources, so a change there fails here first.
+    func testEvalPresetMatchesTheEvalServer() throws {
+        let server = try source("tools/harness-eval/agent/Server.swift")
+        XCTAssertTrue(server.contains("var topK = 40"))
+        XCTAssertTrue(server.contains("var topP = 0.9"))
+        XCTAssertTrue(server.contains("var temperature = 0.6"))
+        XCTAssertTrue(server.contains("var presencePenalty = 0.0"))
+        XCTAssertEqual(SamplingProfile.eval, SamplingProfile(name: "eval", temperature: 0.6, topK: 40, topP: 0.9, presencePenalty: 0.0))
+        XCTAssertNil(SamplingProfile.eval.seed, "the eval sets a seed per sample")
+        XCTAssertEqual(SamplingProfile.evalSeeded(1010).seed, 1010)
+    }
+
+    func testReplyLimitMatchesTheApp() throws {
+        let chat = try source("Sources/LocalChat.swift")
+        XCTAssertTrue(chat.contains("limit: replyLimit"))
+        XCTAssertTrue(chat.contains("editSnapshot != nil ? AgentPrompt.writingReplyTokens : AgentPrompt.readingReplyTokens"))
+        XCTAssertEqual(SamplingProfile.app.replyTokenLimit, AgentPrompt.readingReplyTokens)
+        XCTAssertEqual(AgentPrompt.readingReplyTokens, 512)
+        XCTAssertEqual(AgentPrompt.writingReplyTokens, 2_048)
+    }
+}
