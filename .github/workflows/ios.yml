@@ -1,0 +1,212 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      model_smoke:
+        description: Real model integration checks (large downloads)
+        type: choice
+        default: none
+        options: [none, all, 4B, lfm3, lfm3-vl, minicpm5, mlx]
+
+permissions:
+  contents: read
+
+jobs:
+  harness-linux:
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Harness tests (Linux)
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SQLite headers
+        run: apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev
+      - name: Test the harness package
+        run: swift test
+
+  simulator-runtime:
+    name: Build simulator runtime
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: build/runtime/build-apple/llama.xcframework
+          key: llama-simulator-${{ runner.os }}-${{ runner.arch }}-b12367-${{ hashFiles('scripts/prepare-llama-simulator.sh') }}
+      - name: Prepare the pinned simulator slice
+        run: bash scripts/prepare-llama-simulator.sh
+      - name: Package simulator runtime with framework permissions
+        run: ditto -c -k --keepParent build/runtime/build-apple/llama.xcframework build/runtime/simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime/simulator.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-runtime-build-log
+          path: artifacts/
+          if-no-files-found: ignore
+
+  simulator:
+    needs: simulator-runtime
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Simulator tests
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime
+      - name: Extract simulator runtime
+        run: ditto -x -k build/runtime/simulator.zip build/runtime/build-apple
+      - name: Prepare fixture model
+        run: bash scripts/prepare-test-model.sh
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Build and test native UI
+        run: bash scripts/test-ios-simulator.sh -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-results
+          path: artifacts/
+          if-no-files-found: warn
+
+  device-compile:
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Unsigned iPhone compile
+    runs-on: macos-26
+    timeout-minutes: 45
+    # Pinned rather than the image default, so a runner image update cannot
+    # change the compiler under us. 26.6 has Swift 6.3, which MLX needs.
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Prepare pinned runtime
+        run: |
+          bash scripts/prepare-llama.sh
+          # project.yml lists build/fixtures for the test target; the device
+          # compile builds only the app, so an empty folder is enough.
+          mkdir -p build/fixtures
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Check the committed package pins
+        run: bash scripts/resolve-packages.sh
+      - name: Upload resolved packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-resolved
+          path: artifacts/Package.resolved
+          if-no-files-found: warn
+      - name: Build with resolution off, from the committed file only (as Xcode Cloud does)
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData/KeelMobile-* ~/Library/Caches/org.swift.swiftpm
+          cp ci_scripts/Package.resolved KeelMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          xcodebuild -project KeelMobile.xcodeproj -scheme KeelMobile -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -showBuildSettings > /dev/null
+          echo "The committed Package.resolved is enough with resolution off."
+      - name: Compile the real iPhone target
+        run: bash scripts/build-ios-device.sh
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-device-compile-log
+          path: artifacts/
+          if-no-files-found: warn
+
+  model-smoke:
+    needs: simulator-runtime
+    name: Real model (${{ matrix.model }})
+    if: ${{ inputs.model_smoke && inputs.model_smoke != 'none' && inputs.model_smoke != 'mlx' }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        model: ${{ fromJSON(inputs.model_smoke == 'all' && '["4B","lfm3","lfm3-vl","minicpm5"]' || format('["{0}"]', inputs.model_smoke)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime
+      - name: Extract simulator runtime
+        run: ditto -x -k build/runtime/simulator.zip build/runtime/build-apple
+      - name: Prepare the pinned real model
+        env:
+          SMOKE_MODEL: ${{ matrix.model }}
+        run: python3 scripts/prepare-small-model.py "$SMOKE_MODEL"
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Real inference, tools and vision
+        run: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests/SmallModelSmokeTests
+      - name: Upload real-model results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-model-${{ matrix.model }}
+          path: artifacts/
+          if-no-files-found: warn
+
+  mlx-probe:
+    name: MLX runtime on a Mac (LFM3)
+    if: ${{ inputs.model_smoke == 'mlx' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show the Swift toolchain
+        run: swift --version
+      - uses: actions/cache@v4
+        with:
+          path: build/fixtures/mlx
+          key: mlx-model-${{ hashFiles('scripts/fixtures/mlx-models.json') }}
+      - name: Prepare the pinned MLX model
+        run: python3 scripts/prepare-mlx-model.py lfm3-1.7b-mlx-4bit
+      - name: Build the MLX probe (the app's MLXRunner.swift)
+        # xcodebuild, not swift build: only Xcode compiles MLX's Metal shaders (default.metallib).
+        run: |
+          set -o pipefail
+          xcodebuild -downloadComponent MetalToolchain || true
+          cd tools/mlx-probe
+          xcodebuild build -scheme mlx-probe -destination 'platform=macOS' -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/mlx-probe" -skipPackagePluginValidation -skipMacroValidation \
+            ENABLE_TESTABILITY=YES 2>&1 | tail -40
+      - name: Run the runtime benchmark cases on MLX
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Metal" || true
+          "$RUNNER_TEMP/mlx-probe/Build/Products/Release/mlx-probe" build/fixtures/mlx/lfm3-1.7b-mlx-4bit artifacts/mlx-probe.json 2>&1 | tee artifacts/mlx-probe.txt
+      - name: Upload MLX results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlx-probe
+          path: artifacts/
+          if-no-files-found: warn
