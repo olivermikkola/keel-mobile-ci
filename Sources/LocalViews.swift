@@ -517,8 +517,10 @@ struct LocalChatView: View {
                     .accessibilityIdentifier("photoAsTextMenuOption")
                     #endif
                 } label: {
-                    Image(systemName: "plus").fontWeight(.medium).frame(width: 44, height: 44)
+                    Image(systemName: "plus").font(.system(size: 20, weight: .medium))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .disabled(chat.running || isProcessingAttachment)
                 .accessibilityLabel("Add to chat")
                 .accessibilityIdentifier("composerAddMenu")
@@ -531,7 +533,8 @@ struct LocalChatView: View {
 
                 if chat.running {
                     Button { chat.stop() } label: {
-                        Image(systemName: "stop.fill").frame(width: 44, height: 44)
+                        Image(systemName: "stop.fill").font(.system(size: 18))
+                            .frame(width: 44, height: 44)
                             .foregroundStyle(KeelStyle.detail)
                             .background(KeelStyle.detail.opacity(0.10), in: Circle())
                     }
@@ -548,7 +551,7 @@ struct LocalChatView: View {
                             reviewingEditID = nil
                         }
                     } label: {
-                        Image(systemName: "arrow.up").font(.body.weight(.semibold))
+                        Image(systemName: "arrow.up").font(.system(size: 20, weight: .semibold))
                             .frame(width: 44, height: 44)
                             .foregroundStyle(canSend ? KeelStyle.background : .secondary)
                             .background(canSend ? KeelStyle.accent : KeelStyle.accent.opacity(0.10), in: Circle())
