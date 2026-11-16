@@ -1,0 +1,370 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      model_smoke:
+        description: Real model integration checks (large downloads)
+        type: choice
+        default: none
+        options: [none, all, 4B, lfm3, lfm3-vl, minicpm5, mlx]
+
+permissions:
+  contents: read
+
+# A newer run on the same branch (and the same kind of run) cancels the older one.
+concurrency:
+  group: ios-${{ github.ref }}-${{ inputs.model_smoke || 'none' }}
+  cancel-in-progress: true
+
+jobs:
+  harness-linux:
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: Harness tests (Linux)
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SQLite headers
+        run: apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev
+      - name: Test the harness package
+        run: swift test
+
+  simulator-runtime:
+    name: Build simulator runtime
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: build/runtime/build-apple/llama.xcframework
+          key: llama-simulator-${{ runner.os }}-${{ runner.arch }}-b12367-${{ hashFiles('scripts/prepare-llama-simulator.sh') }}
+      - name: Prepare the pinned simulator slice
+        run: bash scripts/prepare-llama-simulator.sh
+      - name: Package simulator runtime with framework permissions
+        run: ditto -c -k --keepParent build/runtime/build-apple/llama.xcframework build/runtime/simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime/simulator.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-runtime-build-log
+          path: artifacts/
+          if-no-files-found: ignore
+
+  fingerprint:
+    if: ${{ !inputs.model_smoke || inputs.model_smoke == 'none' }}
+    name: App inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      key: ${{ steps.hash.outputs.key }}
+      simulator-passed: ${{ steps.sim.outputs.cache-hit }}
+      device-passed: ${{ steps.device.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: hash
+        name: Hash everything the app build and tests read
+        run: echo "key=$(bash scripts/app-fingerprint.sh)" >> "$GITHUB_OUTPUT"
+      # A marker is saved only after every simulator shard passed (or the device
+      # compile passed) on exactly these files; finding it means nothing to redo.
+      - id: sim
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/passed
+          key: passed-simulator-${{ steps.hash.outputs.key }}
+          lookup-only: true
+      - id: device
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/passed
+          key: passed-device-${{ steps.hash.outputs.key }}
+          lookup-only: true
+      - name: Report
+        run: |
+          echo "App inputs: ${{ steps.hash.outputs.key }}"
+          echo "Simulator tests already passed on these exact files: ${{ steps.sim.outputs.cache-hit == 'true' }}"
+          echo "Device compile already passed on these exact files: ${{ steps.device.outputs.cache-hit == 'true' }}"
+
+  simulator-build:
+    needs: [fingerprint, simulator-runtime]
+    if: ${{ needs.fingerprint.outputs.simulator-passed != 'true' }}
+    name: Build for simulator tests
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime
+      - name: Extract simulator runtime
+        run: ditto -x -k build/runtime/simulator.zip build/runtime/build-apple
+      - name: Prepare fixture model
+        run: bash scripts/prepare-test-model.sh
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      # Compiled packages (MLX's C++ and Metal) and the last build, so only what changed is rebuilt.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ios-simulator
+            !build/ios-simulator/Index.noindex
+            !build/ios-simulator/Logs
+          key: dd-simulator-${{ hashFiles('ci_scripts/Package.resolved', 'project.yml') }}-${{ github.sha }}
+          restore-keys: dd-simulator-${{ hashFiles('ci_scripts/Package.resolved', 'project.yml') }}-
+      - name: Build the app and both test bundles once
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          SIMULATOR_ID="$(python3 scripts/ios-simulator.py --family iPhone)"
+          xcodebuild build-for-testing -project KeelMobile.xcodeproj -scheme KeelMobile \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build/ios-simulator \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- 2>&1 | tee artifacts/xcodebuild-build-for-testing.log | tail -40
+          ditto -c -k --keepParent build/ios-simulator/Build/Products artifacts/test-products.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-test-products
+          path: artifacts/test-products.zip
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: simulator-build-log
+          path: artifacts/xcodebuild-build-for-testing.log
+
+  simulator:
+    needs: [fingerprint, simulator-build]
+    name: Simulator tests (${{ matrix.shard }})
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [unit, ui-1, ui-2, ui-3]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-test-products
+          path: artifacts
+      - name: Unpack the build
+        run: mkdir -p build/ios-simulator/Build && ditto -x -k artifacts/test-products.zip build/ios-simulator/Build
+      - name: Run this shard without rebuilding
+        run: |
+          set -o pipefail
+          retry=()
+          if [[ "${{ matrix.shard }}" == unit ]]; then
+            selection=(-only-testing:KeelMobileTests)
+          else
+            n="${{ matrix.shard }}"; n="${n#ui-}"
+            selection=($(bash scripts/ui-test-shard.sh "$n" 3))
+            # One retry for a UI test that fails: a cold runner's first launches
+            # time out now and then. A real failure fails both tries.
+            retry=(-retry-tests-on-failure -test-iterations 2)
+          fi
+          printf 'Running %s\n' "${selection[@]}"
+          xctestrun="$(ls build/ios-simulator/Build/Products/*.xctestrun | head -1)"
+          SIMULATOR_ID="$(python3 scripts/ios-simulator.py --family iPhone)"
+          # Boot before testing: each shard starts on a cold simulator, and a
+          # boot inside the first UI test makes its launch time out.
+          xcrun simctl boot "$SIMULATOR_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcodebuild test-without-building -xctestrun "$xctestrun" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -parallel-testing-enabled NO "${retry[@]}" \
+            -resultBundlePath "artifacts/iOS-Tests-${{ matrix.shard }}.xcresult" \
+            "${selection[@]}" \
+            -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile \
+            2>&1 | tee "artifacts/xcodebuild-test-${{ matrix.shard }}.log"
+      - name: Summarise results
+        if: always()
+        run: |
+          if [[ -d "artifacts/iOS-Tests-${{ matrix.shard }}.xcresult" ]]; then
+            xcrun xcresulttool get test-results summary --path "artifacts/iOS-Tests-${{ matrix.shard }}.xcresult" > "artifacts/test-summary-${{ matrix.shard }}.json" || true
+            xcrun xcresulttool export attachments --path "artifacts/iOS-Tests-${{ matrix.shard }}.xcresult" --output-path "artifacts/attachments-${{ matrix.shard }}" || true
+          fi
+          rm -f artifacts/test-products.zip
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-results-${{ matrix.shard }}
+          path: artifacts/
+          if-no-files-found: warn
+
+  simulator-passed:
+    needs: [fingerprint, simulator]
+    name: Simulator tests passed
+    runs-on: ubuntu-24.04
+    steps:
+      - run: mkdir -p artifacts && echo "${{ needs.fingerprint.outputs.key }}" > artifacts/passed
+      - uses: actions/cache/save@v4
+        with:
+          path: artifacts/passed
+          key: passed-simulator-${{ needs.fingerprint.outputs.key }}
+
+  simulator-skipped:
+    needs: fingerprint
+    if: ${{ needs.fingerprint.outputs.simulator-passed == 'true' }}
+    name: Simulator tests (already passed on these files)
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Every app input is identical to a run whose simulator tests all passed (key ${{ needs.fingerprint.outputs.key }}). Nothing to rebuild or retest."
+
+  device-compile:
+    needs: fingerprint
+    if: ${{ needs.fingerprint.outputs.device-passed != 'true' }}
+    name: Unsigned iPhone compile
+    runs-on: macos-26
+    timeout-minutes: 45
+    # Pinned rather than the image default, so a runner image update cannot
+    # change the compiler under us. 26.6 has Swift 6.3, which MLX needs.
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Prepare pinned runtime
+        run: |
+          bash scripts/prepare-llama.sh
+          # project.yml lists build/fixtures for the test target; the device
+          # compile builds only the app, so an empty folder is enough.
+          mkdir -p build/fixtures
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Check the committed package pins
+        run: bash scripts/resolve-packages.sh
+      - name: Upload resolved packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-resolved
+          path: artifacts/Package.resolved
+          if-no-files-found: warn
+      - name: Build with resolution off, from the committed file only (as Xcode Cloud does)
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData/KeelMobile-* ~/Library/Caches/org.swift.swiftpm
+          cp ci_scripts/Package.resolved KeelMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          xcodebuild -project KeelMobile.xcodeproj -scheme KeelMobile -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -showBuildSettings > /dev/null
+          echo "The committed Package.resolved is enough with resolution off."
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ios-device
+            !build/ios-device/Index.noindex
+            !build/ios-device/Logs
+          key: dd-device-${{ hashFiles('ci_scripts/Package.resolved', 'project.yml') }}-${{ github.sha }}
+          restore-keys: dd-device-${{ hashFiles('ci_scripts/Package.resolved', 'project.yml') }}-
+      - name: Compile the real iPhone target
+        run: bash scripts/build-ios-device.sh
+
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-device-compile-log
+          path: artifacts/
+          if-no-files-found: warn
+
+  device-passed:
+    needs: [fingerprint, device-compile]
+    name: Device compile passed
+    runs-on: ubuntu-24.04
+    steps:
+      - run: mkdir -p artifacts && echo "${{ needs.fingerprint.outputs.key }}" > artifacts/passed
+      - uses: actions/cache/save@v4
+        with:
+          path: artifacts/passed
+          key: passed-device-${{ needs.fingerprint.outputs.key }}
+
+  model-smoke:
+    needs: simulator-runtime
+    name: Real model (${{ matrix.model }})
+    if: ${{ inputs.model_smoke && inputs.model_smoke != 'none' && inputs.model_smoke != 'mlx' }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        model: ${{ fromJSON(inputs.model_smoke == 'all' && '["4B","lfm3","lfm3-vl","minicpm5"]' || format('["{0}"]', inputs.model_smoke)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-runtime
+          path: build/runtime
+      - name: Extract simulator runtime
+        run: ditto -x -k build/runtime/simulator.zip build/runtime/build-apple
+      - name: Prepare the pinned real model
+        env:
+          SMOKE_MODEL: ${{ matrix.model }}
+        run: python3 scripts/prepare-small-model.py "$SMOKE_MODEL"
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+      - name: Real inference, tools and vision
+        run: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileTests/SmallModelSmokeTests
+      - name: Upload real-model results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-model-${{ matrix.model }}
+          path: artifacts/
+          if-no-files-found: warn
+
+  mlx-probe:
+    name: MLX runtime on a Mac (LFM3)
+    if: ${{ inputs.model_smoke == 'mlx' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show the Swift toolchain
+        run: swift --version
+      - uses: actions/cache@v4
+        with:
+          path: build/fixtures/mlx
+          key: mlx-model-${{ hashFiles('scripts/fixtures/mlx-models.json') }}
+      - name: Prepare the pinned MLX model
+        run: python3 scripts/prepare-mlx-model.py lfm3-1.7b-mlx-4bit
+      - name: Build the MLX probe (the app's MLXRunner.swift)
+        # xcodebuild, not swift build: only Xcode compiles MLX's Metal shaders (default.metallib).
+        run: |
+          set -o pipefail
+          xcodebuild -downloadComponent MetalToolchain || true
+          cd tools/mlx-probe
+          xcodebuild build -scheme mlx-probe -destination 'platform=macOS' -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/mlx-probe" -skipPackagePluginValidation -skipMacroValidation \
+            ENABLE_TESTABILITY=YES 2>&1 | tail -40
+      - name: Run the runtime benchmark cases on MLX
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Metal" || true
+          "$RUNNER_TEMP/mlx-probe/Build/Products/Release/mlx-probe" build/fixtures/mlx/lfm3-1.7b-mlx-4bit artifacts/mlx-probe.json 2>&1 | tee artifacts/mlx-probe.txt
+      - name: Upload MLX results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlx-probe
+          path: artifacts/
+          if-no-files-found: warn
