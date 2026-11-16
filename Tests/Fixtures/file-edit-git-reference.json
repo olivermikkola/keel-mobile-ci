@@ -1,0 +1,44 @@
+[
+  {
+    "name": "context",
+    "before": "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+    "oldText": "five\nsix",
+    "newText": "FIVE\nSIX\nEXTRA",
+    "expectedPatch": "--- a/Sources/a.swift\n+++ b/Sources/a.swift\n@@ -2,8 +2,9 @@\n two\n three\n four\n-five\n-six\n+FIVE\n+SIX\n+EXTRA\n seven\n eight\n nine"
+  },
+  {
+    "name": "add-final-newline",
+    "before": "line",
+    "oldText": "line",
+    "newText": "line\n",
+    "expectedPatch": "--- a/Sources/a.swift\n+++ b/Sources/a.swift\n@@ -1,1 +1,1 @@\n-line\n\\ No newline at end of file\n+line"
+  },
+  {
+    "name": "empty-file",
+    "before": "line\n",
+    "oldText": "line\n",
+    "newText": "",
+    "expectedPatch": "--- a/Sources/a.swift\n+++ b/Sources/a.swift\n@@ -1,1 +0,0 @@\n-line"
+  },
+  {
+    "name": "preserve-crlf",
+    "before": "// café\r\nlet value = 1\r\n// untouched\r\n",
+    "oldText": "value = 1",
+    "newText": "value = 2",
+    "expectedPatch": "--- a/Sources/a.swift\n+++ b/Sources/a.swift\n@@ -1,3 +1,3 @@\n // café\r\n-let value = 1\r\n+let value = 2\r\n // untouched\r"
+  },
+  {
+    "name": "unicode-byte-change",
+    "before": "// café\n",
+    "oldText": "é",
+    "newText": "é",
+    "expectedPatch": "--- a/Sources/a.swift\n+++ b/Sources/a.swift\n@@ -1,1 +1,1 @@\n-// café\n+// café"
+  },
+  {
+    "name": "unicode-byte-change-between-context",
+    "before": "unchanged\n// café\nend\n",
+    "oldText": "é",
+    "newText": "é",
+    "expectedPatch": "--- a/Sources/a.swift\n+++ b/Sources/a.swift\n@@ -1,3 +1,3 @@\n unchanged\n-// café\n+// café\n end"
+  }
+]

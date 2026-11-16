@@ -1,0 +1,64 @@
+[
+  {
+    "family": "lfm3",
+    "system": "Fixture instructions.",
+    "messages": [
+      {
+        "role": "user",
+        "text": "Earlier question."
+      },
+      {
+        "role": "assistant",
+        "text": "Earlier answer."
+      },
+      {
+        "role": "user",
+        "text": "Read my file."
+      },
+      {
+        "role": "assistant",
+        "text": "Calling a tool."
+      },
+      {
+        "role": "tool",
+        "text": "First result."
+      },
+      {
+        "role": "tool",
+        "text": "Second result."
+      }
+    ],
+    "prompt": "<|startoftext|><|im_start|>system\nFixture instructions.<|im_end|>\n<|im_start|>user\nEarlier question.<|im_end|>\n<|im_start|>assistant\n<think></think>Earlier answer.<|im_end|>\n<|im_start|>user\nRead my file.<|im_end|>\n<|im_start|>assistant\n<think></think>Calling a tool.<|im_end|>\n<|im_start|>tool\n<tool_response>\nFirst result.\n</tool_response><|im_end|>\n<|im_start|>tool\n<tool_response>\nSecond result.\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think></think>"
+  },
+  {
+    "family": "miniCPM5",
+    "system": "Fixture instructions.",
+    "messages": [
+      {
+        "role": "user",
+        "text": "Earlier question."
+      },
+      {
+        "role": "assistant",
+        "text": "Earlier answer."
+      },
+      {
+        "role": "user",
+        "text": "Read my file."
+      },
+      {
+        "role": "assistant",
+        "text": "Calling a tool."
+      },
+      {
+        "role": "tool",
+        "text": "First result."
+      },
+      {
+        "role": "tool",
+        "text": "Second result."
+      }
+    ],
+    "prompt": "<s><|im_start|>system\nFixture instructions.<|im_end|>\n<|im_start|>user\nEarlier question.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nEarlier answer.<|im_end|>\n<|im_start|>user\nRead my file.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nCalling a tool.<|im_end|>\n<|im_start|>user\n<tool_response>\nFirst result.\n</tool_response>\n<tool_response>\nSecond result.\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  }
+]
