@@ -64,10 +64,19 @@ final class ChatAppearanceUITests: XCTestCase {
         for _ in 0..<5 where !setup.isHittable { app.swipeUp() }
         XCTAssertTrue(setup.isHittable, "Model setup must be scrollable into view above the composer.")
         let add = app.buttons["composerAddMenu"]
-        XCTAssertTrue(add.isHittable)
+        XCTAssertTrue(add.exists)
         XCTAssertGreaterThanOrEqual(add.frame.height, 44)
+        XCTAssertTrue(app.frame.contains(add.frame), "The add control must stay inside the screen.")
         XCTAssertFalse(app.buttons["sendMessageButton"].isEnabled)
         capture(app, "Keel paper welcome at largest text size - no model installed")
+        // SwiftUI Menu misreports AX hittability here; use the same direct tap
+        // as OfflineDictationUITests and verify the actual interaction.
+        add.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let dictate = app.buttons["offlineDictationMenuOption"]
+        XCTAssertTrue(dictate.waitForExistence(timeout: 5))
+        dictate.tap()
+        XCTAssertTrue(app.navigationBars["Offline dictation"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
         setup.tap()
         XCTAssertTrue(app.navigationBars["Models"].waitForExistence(timeout: 5))
     }
