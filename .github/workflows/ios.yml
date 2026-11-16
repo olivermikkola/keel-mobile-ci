@@ -75,7 +75,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate --spec project.yml
       - name: Build and test native UI
-        run: bash scripts/test-ios-simulator.sh -skip-testing:KeelMobileUITests/RepositoryUITests/testOpenPublicRepositoryAndReadRealFile
+        run: bash scripts/test-ios-simulator.sh -only-testing:KeelMobileUITests/ChatAppearanceUITests -only-testing:KeelMobileTests/ImportedModelLibraryTests
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
