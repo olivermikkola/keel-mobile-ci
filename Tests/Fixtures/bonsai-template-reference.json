@@ -1,0 +1,39 @@
+{
+  "source_revision": "50ebba61be85e5be07e8083db468ace0fc1bac43",
+  "system": "Fixture system.",
+  "messages": [
+    {
+      "role": "user",
+      "text": "An earlier question."
+    },
+    {
+      "role": "assistant",
+      "text": "An earlier answer."
+    },
+    {
+      "role": "user",
+      "text": "Read the file."
+    },
+    {
+      "role": "assistant",
+      "text": "<tool_call>\n<function=list_files>\n<parameter=path>\n.\n</parameter>\n</function>\n</tool_call>"
+    },
+    {
+      "role": "tool",
+      "text": "{\"entries\":[{\"name\":\"README\",\"kind\":\"file\"}]}"
+    },
+    {
+      "role": "assistant",
+      "text": "<tool_call>\n<function=read_file>\n<parameter=path>\nREADME\n</parameter>\n</function>\n</tool_call>"
+    },
+    {
+      "role": "tool",
+      "text": "{\"content\":\"first line\"}"
+    },
+    {
+      "role": "tool",
+      "text": "{\"content\":\"second line\"}"
+    }
+  ],
+  "prompt": "<|im_start|>system\nFixture system.<|im_end|>\n<|im_start|>user\nAn earlier question.<|im_end|>\n<|im_start|>assistant\nAn earlier answer.<|im_end|>\n<|im_start|>user\nRead the file.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=list_files>\n<parameter=path>\n.\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"entries\":[{\"name\":\"README\",\"kind\":\"file\"}]}\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=read_file>\n<parameter=path>\nREADME\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"content\":\"first line\"}\n</tool_response>\n<tool_response>\n{\"content\":\"second line\"}\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+}
