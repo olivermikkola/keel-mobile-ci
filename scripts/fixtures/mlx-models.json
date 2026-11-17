@@ -1,0 +1,48 @@
+{
+  "lfm3-1.7b-mlx-4bit": {
+    "repository": "LiquidAI/LFM3-1.7B-MLX-4bit",
+    "revision": "91f34088d6946482cbcae11b85d4657093618c34",
+    "files": [
+      {
+        "name": "config.json",
+        "bytes": 2423,
+        "sha256": "7df2ea819f9a31b770192a0a9dc1b7953a7dd8c41b816cc3905bbec99ef332bd"
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 973083386,
+        "sha256": "1be5bf672013cd91aa62148f77c5eea8d2784a95845d5fe826e08c7b84823815"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 50700,
+        "sha256": "2c8b88e25f6a1055164dd051436b170872200047bce4b3ec5f2a58f6ef929a75"
+      },
+      {
+        "name": "tokenizer.json",
+        "bytes": 17908634,
+        "sha256": "41927bd314d17d7d7fadb44e10cd0919f7b71528d7741596d8cbd15c6945ec44"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 1859,
+        "sha256": "b77214b9f12be74b9e5e1dab35d7dace077a31be969314bf38866fd6c8163853"
+      },
+      {
+        "name": "special_tokens_map.json",
+        "bytes": 92,
+        "sha256": "7946f864cbfb62a1b041bda937244210a1a87f4a6cab3a48b791131b2cd57f88"
+      },
+      {
+        "name": "generation_config.json",
+        "bytes": 328,
+        "sha256": "0095ba7158e938b1e2d3082d412f00d8be85e42cbbd7608b63866f7a081cf270"
+      },
+      {
+        "name": "chat_template.jinja",
+        "bytes": 12143,
+        "sha256": "306497f109439afcfa248f4ef5800601de24942e2981d632ae63fc5c070ceb12"
+      }
+    ]
+  }
+}
