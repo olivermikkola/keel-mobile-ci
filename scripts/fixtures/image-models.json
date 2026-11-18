@@ -1,0 +1,94 @@
+{
+  "sd21-base-palettized": {
+    "repository": "apple/coreml-stable-diffusion-2-1-base-palettized",
+    "revision": "dca5f2fda9c5143c71aded72bbb4ce39f3c2cc9c",
+    "remoteFolder": "split_einsum_v2/compiled",
+    "files": [
+      {
+        "path": "TextEncoder.mlmodelc/analytics/coremldata.bin",
+        "bytes": 207,
+        "sha256": "a26bdd792e919ca3412c0685e74ea507a6de835532f0ec58d780c99b0a7a0193"
+      },
+      {
+        "path": "TextEncoder.mlmodelc/coremldata.bin",
+        "bytes": 839,
+        "sha256": "2f0484a1a04e023da06787de4140cf215f9ccd67f93d916dc388b846d8607899"
+      },
+      {
+        "path": "TextEncoder.mlmodelc/metadata.json",
+        "bytes": 2792,
+        "sha256": "72df3fb2e265896ba2b34e8b5e245777f0803345f724c386ac4556d54935ebaf"
+      },
+      {
+        "path": "TextEncoder.mlmodelc/model.mil",
+        "bytes": 391100,
+        "sha256": "819d8e7b680b25c8601d44861545d013c02b9c94b9d9ad42290de3de489a6e52"
+      },
+      {
+        "path": "TextEncoder.mlmodelc/weights/weight.bin",
+        "bytes": 318860352,
+        "sha256": "3be3ff19e2ed53774d8c4c22f58bb4f9d37a44c2d6d34955e72decef86aa8615"
+      },
+      {
+        "path": "Unet.mlmodelc/analytics/coremldata.bin",
+        "bytes": 207,
+        "sha256": "7432befba40c728344d55ededaedcbeebf04eca023437afb4418e655515c066c"
+      },
+      {
+        "path": "Unet.mlmodelc/coremldata.bin",
+        "bytes": 1221,
+        "sha256": "5bc742d03b80b46feaa6f9e2159a5c89acda3ed2c1562f2b4f781bb7bfbce110"
+      },
+      {
+        "path": "Unet.mlmodelc/metadata.json",
+        "bytes": 3728,
+        "sha256": "cc395449fa607b675a3a3aac5b81946abd6cce1beb9a4397a0cd2fe5be2ac0c3"
+      },
+      {
+        "path": "Unet.mlmodelc/model.mil",
+        "bytes": 3101782,
+        "sha256": "c03ece04683b45e1838b6fbe899e38f9ed18c12589b22772088fd58ce960d0bb"
+      },
+      {
+        "path": "Unet.mlmodelc/weights/weight.bin",
+        "bytes": 649959936,
+        "sha256": "a4bfeb078744274ac2000593ae80522c8e3363bec8a4cf5e35ef93e3f7b14056"
+      },
+      {
+        "path": "VAEDecoder.mlmodelc/analytics/coremldata.bin",
+        "bytes": 207,
+        "sha256": "682f30dbd27b8c96fae9dd5d7cec36e85812e370cc2a920d9a6cef7a908e29d3"
+      },
+      {
+        "path": "VAEDecoder.mlmodelc/coremldata.bin",
+        "bytes": 769,
+        "sha256": "57555bee9ff5d60c5b6fd48564eac43523d954a2d34101273b8e3fa8f1aee3d0"
+      },
+      {
+        "path": "VAEDecoder.mlmodelc/metadata.json",
+        "bytes": 2493,
+        "sha256": "19dcc0cdee77617dd0ec273ca9ffe8fc55165985f0490004d9f1bf5a3017c61f"
+      },
+      {
+        "path": "VAEDecoder.mlmodelc/model.mil",
+        "bytes": 181387,
+        "sha256": "4769720187b4f34c1335e8ba79424bdfc41b5b55e5bfccf4cbc41a78116d6bb7"
+      },
+      {
+        "path": "VAEDecoder.mlmodelc/weights/weight.bin",
+        "bytes": 98993280,
+        "sha256": "2caef4ff7a13ebe71592e39aff32a93ad62f54fb9fd8ea68ce9239550c5ed63b"
+      },
+      {
+        "path": "merges.txt",
+        "bytes": 524657,
+        "sha256": "f526393189112391ce6f9795d4695f704121ce452c3aad1f5335cc41337eba85"
+      },
+      {
+        "path": "vocab.json",
+        "bytes": 862328,
+        "sha256": "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363"
+      }
+    ]
+  }
+}
