@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="jade" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#acd0c0"/><stop offset="1" stop-color="#507e74"/>
+    </linearGradient>
+    <linearGradient id="rust" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#613c30"/><stop offset="1" stop-color="#c77851"/>
+    </linearGradient>
+  </defs>
+  <!-- Opaque square artwork. iOS supplies its own icon mask. -->
+  <rect width="1024" height="1024" fill="#101a1c"/>
+  <g transform="scale(2)">
+    <path fill="url(#rust)" d="M86 426C214 357 316 367 426 391V252C418 337 231 336 86 426Z"/>
+    <path fill="url(#jade)" d="M86 426L426 86V252C426 328 304 324 203 367C157 386 118 408 86 426Z"/>
+  </g>
+</svg>
