@@ -80,5 +80,41 @@
         }
       ]
     }
+  },
+  {
+    "id": "xr-natural-total",
+    "mode": "work",
+    "prompt": "What do my bookings add up to?",
+    "attachments": [
+      {
+        "path": "bookings.csv",
+        "text": "booking,amount\nA,29\nB,35\nC,16\n"
+      }
+    ],
+    "check": {
+      "answer": [
+        [
+          "80"
+        ]
+      ],
+      "min_steps": 1
+    }
+  },
+  {
+    "id": "xr-grocery-note",
+    "mode": "work",
+    "prompt": "Please save a shopping note called groceries.md with apples and bread on it.",
+    "check": {
+      "files": [
+        {
+          "path": "groceries.md",
+          "contains": [
+            "apples",
+            "bread"
+          ]
+        }
+      ],
+      "min_steps": 1
+    }
   }
 ]

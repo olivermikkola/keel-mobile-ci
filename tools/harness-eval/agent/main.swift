@@ -254,7 +254,8 @@ final class Conversation {
             let base = AgentPrompt.local(app: options.plain ? nil : task.app, mode: task.mode ?? options.mode,
                                         memory: task.memory != nil, image: task.image,
                                         hasFiles: !task.attachments.isEmpty || !task.files.isEmpty || task.image,
-                                        hasLink: WebAddress.containsAddress(in: [task.prompt]))
+                                        hasLink: WebAddress.containsAddress(in: [task.prompt]),
+                                        hasCSVAttachment: task.attachments.contains { $0.path.lowercased().hasSuffix(".csv") })
             var memory = UserMemory()
             for fact in task.memory ?? [] { try memory.add(fact) }
             system = memory.apply(to: base)

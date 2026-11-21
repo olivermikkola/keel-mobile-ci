@@ -76,7 +76,7 @@ enum AgentPrompt {
     ]
 
     static let sqlTools = [
-        #"{"type":"function","function":{"name":"run_sql","description":"Run SQLite queries or tables in this task's private scratch database (up to 4 MB; persists across calls in this task; cannot access repository files). Use complete SQL, for example SELECT SUM(price) AS total FROM items. Use it for structured counting, grouping, joins, or tabular checks. XML-escape &lt; and &amp; if needed.","parameters":{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}}}"#,
+        #"{"type":"function","function":{"name":"run_sql","description":"Run SQLite queries or tables in this task's private scratch database (up to 4 MB; persists across calls in this task; cannot access repository files). Use it for structured counting, grouping, joins, or tabular checks. XML-escape &lt; and &amp; if needed.","parameters":{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}}}"#,
     ]
 
     static let jsReadTools = [
@@ -157,7 +157,8 @@ enum AgentPrompt {
     /// Customize, in Chat and Work alike: each run needs the user's yes.
     static func local(app: AppPreset? = nil, mode: ChatMode = .work, webSearch: Bool = false, connectors: [MCPConnector.Server] = [],
                       github: Bool = false, memory: Bool = false, image: Bool = false, recall: Bool = false,
-                      shortcuts: [String] = [], hasFiles: Bool = true, hasLink: Bool = true) -> String {
+                      shortcuts: [String] = [], hasFiles: Bool = true, hasLink: Bool = true,
+                      hasCSVAttachment: Bool = false) -> String {
         let mode: ChatMode = app == nil ? mode : .work
         if mode == .chat && !hasFiles && !hasLink && !webSearch && connectors.isEmpty
             && !github && !memory && !recall && shortcuts.isEmpty {
@@ -168,10 +169,16 @@ enum AgentPrompt {
             """
         }
         let catalog = toolLines(for: .local).map { tool in
-            webSearch && toolName(tool) == "read_url"
-                ? tool.replacingOccurrences(of: "Only addresses the user wrote in this chat can be opened.",
+            let name = toolName(tool)
+            if webSearch && name == "read_url" {
+                return tool.replacingOccurrences(of: "Only addresses the user wrote in this chat can be opened.",
                     with: "Only addresses the user wrote in this chat or returned by an approved web search can be opened.")
-                : tool
+            }
+            if hasCSVAttachment && name == "run_sql" {
+                return tool.replacingOccurrences(of: "Use it for structured counting, grouping, joins, or tabular checks.",
+                    with: "Use complete SQL, for example SELECT SUM(price) AS total FROM items. Use it for structured counting, grouping, joins, or tabular checks.")
+            }
+            return tool
         }
         let baseTools = (catalog + (webSearch ? [WebSearch.tool] : [])).filter { tool in
             (app.map { $0.tools.contains(toolName(tool)) } ?? true) && mode.offers(toolName(tool))
