@@ -1,0 +1,84 @@
+[
+  {
+    "id": "xr-text",
+    "mode": "chat",
+    "prompt": "Write a short, friendly text saying I'll be 10 minutes late.",
+    "check": {
+      "answer": [
+        [
+          "10 minutes",
+          "ten minutes"
+        ],
+        [
+          "late",
+          "behind"
+        ]
+      ],
+      "max_steps": 0
+    }
+  },
+  {
+    "id": "xr-explain",
+    "mode": "chat",
+    "prompt": "Explain why leaves change colour in autumn in two short sentences.",
+    "check": {
+      "answer": [
+        [
+          "chlorophyll",
+          "green pigment"
+        ],
+        [
+          "leaves"
+        ]
+      ],
+      "max_steps": 0
+    }
+  },
+  {
+    "id": "xr-extract",
+    "mode": "chat",
+    "prompt": "Anna's appointment is at 14:00 on Friday. What day is Anna's appointment? Reply with the day only.",
+    "check": {
+      "answer": [
+        [
+          "Friday"
+        ]
+      ],
+      "max_steps": 0
+    }
+  },
+  {
+    "id": "xr-total",
+    "mode": "work",
+    "prompt": "Use run_sql to sum amount in the attached numbers.csv. Report the total from the tool.",
+    "attachments": [
+      {
+        "path": "numbers.csv",
+        "text": "amount\n147\n233\n169\n"
+      }
+    ],
+    "check": {
+      "answer": [
+        [
+          "549"
+        ]
+      ],
+      "min_steps": 1
+    }
+  },
+  {
+    "id": "xr-write-note",
+    "mode": "work",
+    "prompt": "Create note.md containing exactly this line: Pick up the parcel Friday.",
+    "check": {
+      "files": [
+        {
+          "path": "note.md",
+          "contains": [
+            "Pick up the parcel Friday."
+          ]
+        }
+      ]
+    }
+  }
+]
