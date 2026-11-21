@@ -1,0 +1,132 @@
+import Foundation
+#if canImport(JavaScriptCore)
+import JavaScriptCore
+#endif
+
+/// Result of a fast local syntax check on a proposed file edit before user review.
+public struct SyntaxCheckResult: Equatable, Sendable {
+    public let isValid: Bool
+    public let message: String
+
+    public init(isValid: Bool, message: String) {
+        self.isValid = isValid
+        self.message = message
+    }
+}
+
+/// Runs deterministic, sandboxed syntax checks on full post-edit text without WasmKit.
+public enum SyntaxCheck {
+    public static func inspect(path: String, text: String) -> SyntaxCheckResult? {
+        let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
+        switch ext {
+        case "json", "geojson", "webmanifest":
+            return checkJSON(text)
+        case "css":
+            return checkCSSBraces(text)
+        case "js", "cjs":
+            return checkJavaScript(text)
+        default:
+            return nil
+        }
+    }
+
+    private static func checkJSON(_ text: String) -> SyntaxCheckResult {
+        guard let data = text.data(using: .utf8) else {
+            return SyntaxCheckResult(isValid: false, message: "JSON check: file is not valid UTF-8.")
+        }
+        do {
+            _ = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            return SyntaxCheckResult(isValid: true, message: "JSON syntax valid")
+        } catch {
+            return SyntaxCheckResult(isValid: false, message: "JSON syntax error: \(error.localizedDescription)")
+        }
+    }
+
+    private static func checkCSSBraces(_ text: String) -> SyntaxCheckResult {
+        var depth = 0
+        var quote: Character?
+        var inComment = false
+        var escaped = false
+        var previous: Character?
+
+        for ch in text {
+            if inComment {
+                if previous == "*" && ch == "/" {
+                    inComment = false
+                    previous = nil
+                } else {
+                    previous = ch
+                }
+                continue
+            }
+            if let q = quote {
+                if escaped {
+                    escaped = false
+                } else if ch == "\\" {
+                    escaped = true
+                } else if ch == q {
+                    quote = nil
+                }
+                previous = ch
+                continue
+            }
+            if previous == "/" && ch == "*" {
+                inComment = true
+                previous = nil
+                continue
+            }
+            if ch == "\"" || ch == "'" {
+                quote = ch
+            } else if ch == "{" {
+                depth += 1
+            } else if ch == "}" {
+                depth -= 1
+                if depth < 0 {
+                    return SyntaxCheckResult(isValid: false, message: "CSS syntax error: unexpected closing '}'.")
+                }
+            }
+            previous = ch
+        }
+
+        if inComment {
+            return SyntaxCheckResult(isValid: false, message: "CSS syntax error: unclosed /* ... */ comment.")
+        }
+        if let quote {
+            return SyntaxCheckResult(isValid: false, message: "CSS syntax error: unclosed \(quote) string.")
+        }
+        if depth > 0 {
+            return SyntaxCheckResult(isValid: false, message: "CSS syntax error: missing \(depth) closing '}'.")
+        }
+        return SyntaxCheckResult(isValid: true, message: "CSS braces and strings balanced")
+    }
+
+    private static func checkJavaScript(_ text: String) -> SyntaxCheckResult? {
+        #if canImport(JavaScriptCore)
+        // `new Function(src)` parses classic scripts without executing them,
+        // but rejects top-level ES module `import`/`export` statements.
+        let trimmedLines = text.split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        if trimmedLines.contains(where: { $0.hasPrefix("import ") || $0.hasPrefix("export ") }) {
+            return nil
+        }
+        guard let context = JSContext() else { return nil }
+        var syntaxError: String?
+        context.exceptionHandler = { _, exception in
+            syntaxError = exception?.toString()
+        }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: [text], options: []),
+              let jsonArray = String(data: encoded, encoding: .utf8),
+              jsonArray.count >= 2 else {
+            return nil
+        }
+        let quoted = String(jsonArray.dropFirst().dropLast())
+        _ = context.evaluateScript("new Function(\(quoted));")
+        if let syntaxError {
+            return SyntaxCheckResult(isValid: false, message: "JavaScript syntax error: \(syntaxError)")
+        }
+        return SyntaxCheckResult(isValid: true, message: "JavaScript syntax valid")
+        #else
+        return nil
+        #endif
+    }
+}
