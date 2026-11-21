@@ -13,24 +13,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Qwen3 0.6B
+          - name: LFM2.5 350M
+            family: lfm3
             kv: f16
-            repo: Qwen/Qwen3-0.6B-GGUF
-            revision: 23749fefcc72300e3a2ad315e1317431b06b590a
-            filename: Qwen3-0.6B-Q8_0.gguf
-            sha256: 9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
-          - name: Qwen3 0.6B
-            kv: q8_0
-            repo: Qwen/Qwen3-0.6B-GGUF
-            revision: 23749fefcc72300e3a2ad315e1317431b06b590a
-            filename: Qwen3-0.6B-Q8_0.gguf
-            sha256: 9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
-          - name: Bonsai 2 2B
+            repo: LiquidAI/LFM2.5-350M-GGUF
+            revision: 657e078c94084481950a2d555a941481f715536b
+            filename: LFM2.5-350M-Q4_K_M.gguf
+            sha256: 7e6f72643caafc9a68256686638c4d7916f2cec76d1df478d4c3ddcd95a6aed4
+          - name: LFM2.5 1.2B
+            family: lfm3
             kv: f16
-            repo: prism-ml/Ternary-Bonsai-2-2B-gguf
-            revision: a6032a5089ac27e96be3a80c7b42d1ad0bd89887
-            filename: Ternary-Bonsai-2-2B-Q2_0.gguf
-            sha256: c2893fa6f951daee8b7263d5f49b455e57989ef56417a22125b03566dc560650
+            repo: LiquidAI/LFM2.5-1.2B-Instruct-GGUF
+            revision: 8ed288026e23958ad9dfa92d53ed773a8eee7125
+            filename: LFM2.5-1.2B-Instruct-Q4_K_M.gguf
+            sha256: b1b3de114215d9507409a662a501a631095a479a419584e8a2ded6304b19b4f5
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime headers
@@ -53,6 +49,7 @@ jobs:
         env:
           FILENAME: ${{ matrix.filename }}
           KV: ${{ matrix.kv }}
+          FAMILY: ${{ matrix.family }}
         run: |
           set -euo pipefail
           runtime="$(find proof/runtime -type f -name llama-server -print -quit)"
@@ -67,7 +64,7 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:8081/health
-          bash tools/harness-eval/agent.sh --server http://127.0.0.1:8081 --context 4096 --family bonsai --kind local --samples 1 --task-file proof/tasks.json --grammar --out proof/results/attempts.jsonl | tee proof/results/summary.txt
+          bash tools/harness-eval/agent.sh --server http://127.0.0.1:8081 --context 4096 --family "$FAMILY" --kind local --samples 1 --task-file proof/tasks.json --grammar --out proof/results/attempts.jsonl | tee proof/results/summary.txt
       - name: Record actual successes, tool usage and failures
         if: always()
         uses: actions/upload-artifact@v4
