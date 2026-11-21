@@ -76,7 +76,7 @@ enum AgentPrompt {
     ]
 
     static let sqlTools = [
-        #"{"type":"function","function":{"name":"run_sql","description":"Run SQLite queries or tables in this task's private scratch database (up to 4 MB; persists across calls in this task; cannot access repository files). Use it for structured counting, grouping, joins, or tabular checks. XML-escape &lt; and &amp; if needed.","parameters":{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}}}"#,
+        #"{"type":"function","function":{"name":"run_sql","description":"Run SQLite queries or tables in this task's private scratch database (up to 4 MB; persists across calls in this task; cannot access repository files). Use complete SQL, for example SELECT SUM(price) AS total FROM items. Use it for structured counting, grouping, joins, or tabular checks. XML-escape &lt; and &amp; if needed.","parameters":{"type":"object","properties":{"sql":{"type":"string"}},"required":["sql"]}}}"#,
     ]
 
     static let jsReadTools = [
