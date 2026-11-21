@@ -116,5 +116,24 @@
       ],
       "min_steps": 1
     }
+  },
+  {
+    "id": "xr-expenses-total",
+    "mode": "work",
+    "prompt": "Add up the costs in my expense file. How much did I spend?",
+    "attachments": [
+      {
+        "path": "expenses.csv",
+        "text": "day,cost\nMonday,142.50\nTuesday,7.50\n"
+      }
+    ],
+    "check": {
+      "answer": [
+        [
+          "150"
+        ]
+      ],
+      "min_steps": 1
+    }
   }
 ]

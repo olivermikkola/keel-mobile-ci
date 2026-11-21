@@ -175,8 +175,10 @@ enum AgentPrompt {
                     with: "Only addresses the user wrote in this chat or returned by an approved web search can be opened.")
             }
             if hasCSVAttachment && name == "run_sql" {
-                return tool.replacingOccurrences(of: "Use it for structured counting, grouping, joins, or tabular checks.",
-                    with: "Use complete SQL, for example SELECT SUM(price) AS total FROM items. Use it for structured counting, grouping, joins, or tabular checks.")
+                return tool.replacingOccurrences(of: "Each .csv file of this chat is also a table: SELECT * FROM sales.csv reads sales.csv, loaded fresh on every call.",
+                    with: "Each attached CSV is loaded as a table named after the file. For totals, use a full query such as SELECT SUM(price) AS total FROM items. Use the actual table and column names.")
+                    .replacingOccurrences(of: "Use it for structured counting, grouping, joins, or tabular checks.",
+                    with: "Call this tool for every total, average or count the user asks for from a file. If a query fails, fix the query before giving a number.")
             }
             return tool
         }
