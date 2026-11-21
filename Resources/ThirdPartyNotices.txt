@@ -1,0 +1,101 @@
+Third-Party Software and Model Notices
+======================================
+
+Keel Mobile includes or links the following open-source software, and can
+optionally download the third-party models listed below. Models are downloaded
+on demand by the user and are not bundled inside the app.
+
+
+Bundled and Linked Open-Source Software
+---------------------------------------
+
+llama.cpp / ggml
+Runtime: ggml-org/llama.cpp b12367 (fe14cad51bbfb3f1cc8d9cfd9d70e98a123743d3)
+https://github.com/ggml-org/llama.cpp
+MIT License — Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Apple ml-stable-diffusion (StableDiffusionCore)
+https://github.com/apple/ml-stable-diffusion (commit ea2805dc1945be20561c77e5f6d1d9a5a637cda2)
+MIT License — Copyright (c) 2022 Apple Inc.
+
+MLX Swift & MLX Swift LM
+https://github.com/ml-explore/mlx-swift (0.33.0)
+https://github.com/ml-explore/mlx-swift-lm (commit 6352907543270ae9c61fcaf59cb3e07b0b989ea1)
+MIT License — Copyright (c) 2024 Apple Inc.
+
+Hugging Face Swift Packages
+- swift-transformers (1.4.0): https://github.com/huggingface/swift-transformers — Apache-2.0
+- swift-huggingface (1.0.0): https://github.com/huggingface/swift-huggingface — Apache-2.0
+- swift-jinja (3.1.0): https://github.com/huggingface/swift-jinja — Apache-2.0
+
+Apple & Swift Open-Source Packages
+- swift-collections (1.7.6): https://github.com/apple/swift-collections — Apache-2.0
+- swift-numerics (1.1.1): https://github.com/apple/swift-numerics — Apache-2.0
+- swift-crypto (4.5.2): https://github.com/apple/swift-crypto — Apache-2.0
+- swift-asn1 (1.7.4): https://github.com/apple/swift-asn1 — Apache-2.0
+- swift-syntax (603.0.2): https://github.com/swiftlang/swift-syntax — Apache-2.0
+
+Other Linked Packages
+- EventSource (1.6.0): https://github.com/mattt/EventSource — MIT License
+- yyjson (0.13.0): https://github.com/ibireme/yyjson — MIT License
+
+
+Downloaded Models (Optional, Not Bundled)
+-----------------------------------------
+
+Bonsai 2 4B & Bonsai 2 9B
+https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf
+https://huggingface.co/prism-ml/Ternary-Bonsai-2-9B-gguf
+Apache License 2.0 (see Apache 2.0 License in-app or BonsaiChatTemplateLicense.txt).
+Bonsai chat-template adaptation derives from tokenizer.chat_template in
+Ternary-Bonsai-2-4B-Q2_0.gguf (revision 50ebba61be85e5be07e8083db468ace0fc1bac43),
+under Apache-2.0. The Swift adaptation adds control-token escaping and enforces
+one read tool per request.
+
+LFM3 1.7B (GGUF & MLX 4-bit), LFM3 VL 2B, and d1 2B
+https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF
+https://huggingface.co/LiquidAI/LFM3-1.7B-MLX-4bit
+https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF
+https://huggingface.co/LiquidAI/d1-2B-GGUF
+LFM Open License v1.0 (full terms in LFMOpenLicense.txt, viewable in-app).
+
+MiniCPM5 2B
+https://huggingface.co/openbmb/MiniCPM5-2B-GGUF
+Apache License 2.0 (full terms in BonsaiChatTemplateLicense.txt, viewable in-app).
+The small-model Swift renderers adapt each vendor's native message framing with
+thinking disabled by default, control-token escaping, and bounded tool input.
+
+EmbeddingGemma 300M (Search by meaning)
+https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF
+Gemma is provided under and subject to the Gemma Terms of Use found at
+https://ai.google.dev/gemma/terms and the Gemma Prohibited Use Policy found at
+https://ai.google.dev/gemma/prohibited_use_policy.
+
+Stable Diffusion 2.1 Core ML (Make images)
+https://huggingface.co/apple/coreml-stable-diffusion-2-1-base-palettized
+CreativeML Open RAIL++-M License
+https://huggingface.co/spaces/CompVis/stable-diffusion-license
+
+Custom Imported Models
+Users may optionally import GGUF models from Files or public Hugging Face links.
+Users are responsible for complying with the license terms of any model they
+choose to import.
