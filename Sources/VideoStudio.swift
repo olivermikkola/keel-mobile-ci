@@ -1,0 +1,428 @@
+import AVFoundation
+import Foundation
+import PhotosUI
+import SwiftUI
+import UIKit
+#if canImport(KeelHarness)
+import KeelHarness
+#endif
+
+/// A video made on the Videos screen: its photos, what the user asked for, and
+/// the lines the model wrote, so a change can start from them.
+struct StudioVideo: Codable, Identifiable, Equatable {
+    var id = UUID()
+    /// `ShortVideoStore` file name of the `.mp4`.
+    let video: String
+    /// Photo file names in `VideoGallery.directory`, in scene order.
+    let photos: [String]
+    let description: String
+    let lines: [VideoScript.Line]
+    let voice: String
+    let createdAt: Date
+    /// What the phone found in each photo (`VideoPhotoNotes`); nil for videos made before notes.
+    var notes: [String]? = nil
+    /// Seconds each step took, shown under the video so slow steps are visible.
+    var timings: Timings? = nil
+
+    struct Timings: Codable, Equatable {
+        let photos: TimeInterval
+        let lines: TimeInterval
+        let voice: TimeInterval
+        let video: TimeInterval
+        var summary: String {
+            [("Photos", photos), ("Lines", lines), ("Voice", voice), ("Video", video)]
+                .map { "\($0.0) \(Int($0.1.rounded())) s" }.joined(separator: " · ")
+        }
+    }
+}
+
+/// The Videos screen's own list and photos, kept apart from chats (whose
+/// clean-up would otherwise delete them) and out of backups.
+@MainActor
+final class VideoGallery: ObservableObject {
+    @Published private(set) var items: [StudioVideo] = []
+    let directory: URL
+    private var listURL: URL { directory.appendingPathComponent("videos.json") }
+
+    nonisolated static var defaultDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("VideoStudio", isDirectory: true)
+    }
+
+    init(directory: URL = VideoGallery.defaultDirectory) {
+        self.directory = directory
+        items = Self.load(listURL).filter { FileManager.default.fileExists(atPath: ShortVideoStore.url($0.video).path) }
+    }
+
+    /// Videos this screen still shows, for `ShortVideoStore.prune`.
+    nonisolated static func savedVideoNames(directory: URL = VideoGallery.defaultDirectory) -> Set<String> {
+        Set(load(directory.appendingPathComponent("videos.json")).map(\.video))
+    }
+
+    nonisolated private static func load(_ url: URL) -> [StudioVideo] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        return (try? JSONDecoder().decode([StudioVideo].self, from: data)) ?? []
+    }
+
+    func photoURL(_ name: String) -> URL { directory.appendingPathComponent(name) }
+
+    /// Saves picked photos at up to 1920 px on the long side (the video's
+    /// size), as JPEG. Returns their file names in the same order.
+    func addPhotos(_ photos: [Data]) throws -> [String] {
+        try prepare()
+        return try photos.map { data in
+            guard let image = UIImage(data: data), let jpeg = Self.resized(image, longSide: 1920).jpegData(compressionQuality: 0.88) else {
+                throw ImageStudioError.message("One of the photos could not be read.")
+            }
+            let name = UUID().uuidString + ".jpg"
+            try jpeg.write(to: photoURL(name), options: [.atomic, .completeFileProtection])
+            return name
+        }
+    }
+
+    /// Deletes a picked photo that was taken off the screen, unless a saved video uses it.
+    func discardUnused(_ photo: String) {
+        guard !items.contains(where: { $0.photos.contains(photo) }) else { return }
+        try? FileManager.default.removeItem(at: photoURL(photo))
+    }
+
+    func add(_ item: StudioVideo) {
+        items.insert(item, at: 0)
+        save()
+    }
+
+    /// Removes the video and any photo no other video uses.
+    func delete(_ item: StudioVideo) {
+        items.removeAll { $0.id == item.id }
+        save()
+        try? FileManager.default.removeItem(at: ShortVideoStore.url(item.video))
+        try? FileManager.default.removeItem(at: ShortVideoStore.manifestURL(item.video))
+        let used = Set(items.flatMap(\.photos))
+        for photo in item.photos where !used.contains(photo) { try? FileManager.default.removeItem(at: photoURL(photo)) }
+    }
+
+    func draft(_ item: StudioVideo) -> ShortVideoDraft? {
+        guard let manifest = ShortVideoStore.manifest(for: item.video) else { return nil }
+        let plan = manifest.plan
+        return ShortVideoDraft(video: ShortVideoStore.url(item.video), plan: plan, voiceLabel: item.voice,
+                               pictures: plan.clips.map { clip in
+                                   let url = photoURL(clip.imagePath)
+                                   return FileManager.default.fileExists(atPath: url.path) ? url : nil
+                               })
+    }
+
+    private func prepare() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var folder = directory
+        var excluded = URLResourceValues(); excluded.isExcludedFromBackup = true
+        try? folder.setResourceValues(excluded)
+    }
+
+    private func save() {
+        try? prepare()
+        try? JSONEncoder().encode(items).write(to: listURL, options: [.atomic, .completeFileProtection])
+    }
+
+    private static func resized(_ image: UIImage, longSide: CGFloat) -> UIImage {
+        let size = image.size
+        let scale = min(1, longSide / max(size.width, size.height, 1))
+        guard scale < 1 else { return image }
+        let target = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
+    }
+}
+
+/// Runs one video: the chat model writes the lines, then the narration voice
+/// speaks them and the renderer makes the `.mp4`.
+@MainActor
+final class VideoMaker: ObservableObject {
+    @Published private(set) var phase: String?
+    @Published var error: String?
+    private var work: Task<Void, Never>?
+    private var cancellation: InferenceCancellation?
+    /// The voice, once downloaded; a stand-in in tests.
+    private let narration: () -> (any NarrationSpeaking)?
+    /// What the phone finds in the photos; a stand-in in tests.
+    private let look: ([URL]) async -> [String]
+
+    init(narration: @escaping () -> (any NarrationSpeaking)? = { NarrationVoiceStore.isInstalled ? NarrationEngine() : nil },
+         look: @escaping ([URL]) async -> [String] = { await VideoPhotoNotes.notes(for: $0) }) {
+        self.narration = narration
+        self.look = look
+    }
+
+    var busy: Bool { work != nil }
+
+    /// Makes a video from `photos` (file names in the gallery). With `from`
+    /// and `change`, rewrites that video's lines with the change.
+    func make(description: String, photos: [String], voice: String, from previous: StudioVideo? = nil, change: String? = nil,
+              chat: LocalChat, model: LocalModel, modelPath: URL, gallery: VideoGallery, done: @escaping (StudioVideo) -> Void = { _ in }) {
+        guard work == nil else { return }
+        guard !chat.running else { error = "Wait for the chat's reply to finish, then try again."; return }
+        guard let engine = narration() else { error = "Download the narration voice first."; return }
+        if case .stop = ThermalPolicy.currentDecision() { error = LocalModelError.thermal.localizedDescription; return }
+        error = nil
+        let flag = InferenceCancellation()
+        cancellation = flag
+        phase = "Looking at the photos…"
+        UIApplication.shared.isIdleTimerDisabled = true
+        work = Task {
+            defer {
+                work = nil; phase = nil; cancellation = nil
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+            do {
+                let started = Date()
+                // The same photos keep their notes; reading them again would only cost time.
+                let notes = previous?.photos == photos ? (previous?.notes ?? []) : []
+                let found = notes.isEmpty ? await look(photos.map(gallery.photoURL)) : notes
+                try Task.checkCancellation()
+                let looked = Date()
+                phase = "Writing the lines…"
+                let lines = try await chat.writeVideoScript(description: description, photoCount: photos.count, photoNotes: found,
+                                                            previous: previous?.lines ?? [], change: change,
+                                                            model: model, path: modelPath, cancellation: flag)
+                let wrote = Date()
+                try Task.checkCancellation()
+                let arguments = VideoScript.arguments(lines: lines, photoNames: photos, voice: voice)
+                let folder = gallery.directory
+                let made = try await ShortVideoMaker.make(arguments, picture: { folder.appendingPathComponent($0) }, engine: engine,
+                                                          stopped: { flag.isCancelled }, phase: { [weak self] in self?.phase = $0 })
+                let item = StudioVideo(video: made.name, photos: photos, description: description, lines: lines,
+                                       voice: voice, createdAt: Date(), notes: found,
+                                       timings: .init(photos: looked.timeIntervalSince(started), lines: wrote.timeIntervalSince(looked),
+                                                      voice: made.speakSeconds, video: made.renderSeconds))
+                gallery.add(item)
+                done(item)
+            } catch is CancellationError {
+            } catch {
+                if !flag.isCancelled { self.error = error.localizedDescription }
+            }
+        }
+    }
+
+    func cancel() {
+        cancellation?.cancel()
+        work?.cancel()
+    }
+
+    /// Waits for the current video, for tests.
+    func finish() async { await work?.value }
+}
+
+/// The Videos screen: pick photos, say what the video is about, and Keel
+/// writes the lines, the narration voice reads them, and the video is made.
+struct VideosView: View {
+    @EnvironmentObject private var chat: LocalChat
+    @EnvironmentObject private var models: ModelLibrary
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var gallery = VideoGallery()
+    @StateObject private var maker = VideoMaker()
+    @StateObject private var narration = NarrationVoiceStore()
+    @AppStorage("videoVoice") private var voice = NarrationVoicePack.defaultVoice
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var photos: [String] = []
+    @State private var loadingPhotos = false
+    @State private var about = ""
+    @State private var opened: StudioVideo?
+    @FocusState private var typing: Bool
+
+    private var hasModel: Bool { models.installed.contains(models.selected) }
+    private var canMake: Bool {
+        !photos.isEmpty && !about.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && narration.installed && hasModel && !maker.busy && !chat.running && !loadingPhotos
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    composer
+                    if !gallery.items.isEmpty { madeHere }
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(KeelStyle.background)
+            .navigationTitle("Videos")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .onChange(of: picked) { _, items in load(items) }
+            .fullScreenCover(item: $opened) { item in
+                if let draft = gallery.draft(item) {
+                    ShortVideoDraftView(draft: draft) { change in remake(item, change: change) }
+                } else {
+                    Text("This video's files are gone.").padding()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var composer: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Pick up to \(VideoScript.maxPhotos) photos and say what the video is about. Keel writes a line for each photo and reads it aloud, all on this \(KeelDevice.name).")
+                .font(.subheadline).foregroundStyle(.secondary)
+            photoStrip
+            TextField("What is it about? Say what it is and who it is for: the more you say, the better the lines.", text: $about, axis: .vertical)
+                .lineLimit(1...4)
+                .focused($typing)
+                .padding(12)
+                .background(KeelStyle.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .accessibilityIdentifier("videoAbout")
+            HStack {
+                Picker("Voice", selection: $voice) {
+                    ForEach(NarrationVoicePack.voices, id: \.id) { Text($0.label).tag($0.id) }
+                }
+                .pickerStyle(.menu)
+                .disabled(maker.busy)
+                Spacer()
+                if maker.busy {
+                    Button(role: .destructive) { maker.cancel() } label: { Label("Stop", systemImage: "stop.fill") }
+                        .buttonStyle(.bordered)
+                } else {
+                    Button { make() } label: { Label("Make video", systemImage: "film") }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canMake)
+                        .accessibilityIdentifier("makeVideo")
+                }
+            }
+            if let phase = maker.phase {
+                HStack(spacing: 8) { ProgressView(); Text(phase).font(.footnote).foregroundStyle(.secondary) }
+            }
+            setupNotes
+            if let error = maker.error { Text(error).font(.footnote).foregroundStyle(.orange) }
+        }
+        .padding(18)
+        .background(KeelStyle.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private var photoStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(Array(photos.enumerated()), id: \.element) { index, name in
+                    ZStack(alignment: .topTrailing) {
+                        thumbnail(gallery.photoURL(name))
+                            .frame(width: 84, height: 112)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        Button { gallery.discardUnused(photos.remove(at: index)) } label: {
+                            Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black.opacity(0.6))
+                        }
+                        .padding(4)
+                        .disabled(maker.busy)
+                        .accessibilityLabel("Remove photo \(index + 1)")
+                    }
+                }
+                if photos.count < VideoScript.maxPhotos {
+                    PhotosPicker(selection: $picked, maxSelectionCount: VideoScript.maxPhotos - photos.count,
+                                 selectionBehavior: .ordered, matching: .images) {
+                        VStack(spacing: 6) {
+                            if loadingPhotos { ProgressView() } else { Image(systemName: "plus").font(.title2) }
+                            Text(photos.isEmpty ? "Add photos" : "Add").font(.caption)
+                        }
+                        .frame(width: 84, height: 112)
+                        .background(KeelStyle.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .disabled(maker.busy || loadingPhotos)
+                    .accessibilityIdentifier("videoAddPhotos")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var setupNotes: some View {
+        if let reason = NarrationVoiceStore.unsupportedReason {
+            Text(reason).font(.footnote).foregroundStyle(.orange)
+        } else if !narration.installed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Videos need the narration voice (about \(ByteCountFormatter.string(fromByteCount: NarrationVoicePack.approximateBytes, countStyle: .file))).")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if let progress = narration.progress {
+                    ProgressView(value: progress)
+                    Button("Stop") { narration.cancel() }.font(.footnote)
+                } else {
+                    Button("Download narration voice") { narration.download { await chat.unloadModelsNow() } }
+                        .buttonStyle(.bordered)
+                        .disabled(chat.running || maker.busy)
+                        .accessibilityIdentifier("videoDownloadVoice")
+                }
+                if let error = narration.error { Text(error).font(.footnote).foregroundStyle(.orange) }
+            }
+        }
+        if !hasModel {
+            Text("Download a chat model in Models; it writes the lines.").font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    private var madeHere: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Made here").font(.headline)
+            ForEach(gallery.items) { item in
+                Button { opened = item } label: {
+                    HStack(spacing: 12) {
+                        thumbnail(item.photos.first.map(gallery.photoURL))
+                            .frame(width: 54, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.description).font(.subheadline).lineLimit(2).foregroundStyle(.primary)
+                            Text("\(item.photos.count) photos · \(item.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption).foregroundStyle(.secondary)
+                            if let timings = item.timings {
+                                Text(timings.summary).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "play.circle.fill").font(.title2).foregroundStyle(KeelStyle.accent)
+                    }
+                    .padding(10)
+                    .background(KeelStyle.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Use these photos again") { photos = item.photos; about = item.description }
+                    Button("Delete", role: .destructive) { gallery.delete(item) }
+                }
+            }
+        }
+    }
+
+    private func thumbnail(_ url: URL?) -> some View {
+        Group {
+            if let url, let image = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color.secondary.opacity(0.15)
+            }
+        }
+    }
+
+    private func load(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        loadingPhotos = true
+        Task {
+            defer { loadingPhotos = false; picked = [] }
+            var data: [Data] = []
+            for item in items {
+                if let loaded = try? await item.loadTransferable(type: Data.self) { data.append(loaded) }
+            }
+            do {
+                let names = try gallery.addPhotos(data)
+                photos = Array((photos + names).prefix(VideoScript.maxPhotos))
+            } catch {
+                maker.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func make() {
+        typing = false
+        maker.make(description: about, photos: photos, voice: voice, chat: chat, model: models.current,
+                   modelPath: models.path(models.current), gallery: gallery) { item in opened = item }
+    }
+
+    private func remake(_ item: StudioVideo, change: String) {
+        opened = nil
+        maker.make(description: item.description, photos: item.photos, voice: item.voice, from: item, change: change,
+                   chat: chat, model: models.current, modelPath: models.path(models.current), gallery: gallery) { made in opened = made }
+    }
+}
