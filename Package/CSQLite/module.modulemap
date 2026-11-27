@@ -1,0 +1,6 @@
+// Linux only: Apple platforms ship their own SQLite3 module.
+module CSQLite [system] {
+    header "shim.h"
+    link "sqlite3"
+    export *
+}
