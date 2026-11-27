@@ -1,0 +1,27 @@
+# Seconds each UI test class took on the CI mirror (run 45777689889), used by
+# scripts/ui-test-shard.sh to balance shards. A class not listed counts as 60 s.
+# Refresh from a full run's xcodebuild-test-*.log when shards drift apart.
+AppPresetUITests 59
+ChatAppearanceUITests 170
+CustomizeAndThinkingUITests 96
+DecideUITests 60
+FileEditUITests 137
+FileSearchUITests 92
+GitHubConnectionUITests 96
+HardwareRecommendationsUITests 75
+ImagesUITests 49
+ImportedModelUITests 124
+MCPConnectorUITests 75
+ModelDownloadUITests 212
+NavigationUITests 91
+OfflineDictationUITests 26
+PairingUITests 48
+ProjectUITests 65
+QuickArithmeticUITests 25
+ReplySpeechUITests 14
+RepositoryUITests 56
+SavedTaskUITests 113
+ScheduleTaskUITests 23
+ShortVideoDraftUITests 40
+SmallModelUITests 43
+WebSearchUITests 38
