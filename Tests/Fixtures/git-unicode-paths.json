@@ -1,0 +1,24 @@
+{
+  "tree": "8decc092cb58e5edc82b92f4b3bba82ee92b2206",
+  "decomposedOnlyTree": "2a204b34ae9877fd258e01c8e31da00780cecd2b",
+  "entries": [
+    {
+      "path": "é.swift",
+      "content": "original\n",
+      "sha": "4b48deed3a433909bfd6b6ab3d4b91348b6af464",
+      "size": 9,
+      "mode": "100644",
+      "type": "blob"
+    },
+    {
+      "path": "é.swift",
+      "content": "original\n",
+      "sha": "4b48deed3a433909bfd6b6ab3d4b91348b6af464",
+      "size": 9,
+      "mode": "100644",
+      "type": "blob"
+    }
+  ],
+  "leadingMarkChildTree": "a608b4b558b9fde269c77f2ca78f67d6e09b0d05",
+  "leadingMarkRootTree": "b98815f4e4f4a5d15ae5ccce67ab098c4276ecdb"
+}

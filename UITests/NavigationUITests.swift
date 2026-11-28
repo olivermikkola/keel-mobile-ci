@@ -1,0 +1,92 @@
+import XCTest
+
+final class NavigationUITests: XCTestCase {
+    func testDefaultNavigationWorksWithoutAHost() {
+        let app = XCUIApplication(); app.launch()
+        XCTAssertTrue(app.buttons["Menu"].waitForExistence(timeout: 10))
+        app.buttons["New chat"].tap()
+        XCTAssertFalse(app.buttons["attachRepository"].exists, "A fresh chat starts with the assistant, without a repository prompt")
+        capture(app, "General assistant home")
+        XCTAssertFalse(app.tabBars.firstMatch.exists, "Chat is the only screen; everything else opens from the menu")
+        app.buttons["Menu"].tap()
+        XCTAssertTrue(app.buttons["menu-models"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["menu-connections"].exists)
+        XCTAssertFalse(app.buttons["menu-hostWorkspace"].exists)
+        XCTAssertFalse(app.buttons["menu-hostApprovals"].exists)
+        // Six rows: the studios moved into Apps and About into Customize.
+        for row in ["library", "apps", "projects", "scheduled", "customize"] {
+            XCTAssertTrue(app.buttons["menu-\(row)"].exists, "menu-\(row)")
+        }
+        for moved in ["images", "videos", "carousels", "decide", "about"] {
+            XCTAssertFalse(app.buttons["menu-\(moved)"].exists, "menu-\(moved) should live elsewhere now")
+        }
+        capture(app, "On-device default menu")
+        app.buttons["menu-scheduled"].tap()
+        XCTAssertTrue(app.staticTexts["scheduledEmpty"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+        app.buttons["Menu"].tap()
+        app.buttons["menu-connections"].tap()
+        XCTAssertTrue(app.navigationBars["Connections"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Choose a local model"].exists)
+        XCTAssertTrue(app.buttons["openGitHubRepository"].exists)
+        capture(app, "Local model and repository connections")
+        app.buttons["Choose a local model"].tap()
+        XCTAssertTrue(app.buttons["Download Bonsai 2 · 4B"].waitForExistence(timeout: 10))
+    }
+
+    func testHostControlsAppearOnlyWhileConnectedAndDisconnectReturnsToConnections() {
+        let app = XCUIApplication(); app.launchArguments = ["--connected-host-fixture"]; app.launch()
+        XCTAssertTrue(app.buttons["Menu"].waitForExistence(timeout: 10))
+        app.openFromMenu("connections")
+        let workspace = app.buttons["hostWorkspace"]
+        for _ in 0..<6 where !(workspace.exists && workspace.isHittable) { app.swipeUp() }
+        XCTAssertTrue(app.buttons["hostApprovals"].exists)
+        workspace.tap()
+        XCTAssertTrue(app.staticTexts["Commands execute on the connected host."].waitForExistence(timeout: 5))
+        capture(app, "Connected host workspace - UI fixture")
+        app.navigationBars.buttons["Disconnect"].tap()
+        XCTAssertTrue(app.navigationBars["Connections"].waitForExistence(timeout: 10))
+        app.buttons["Done"].tap()
+        app.buttons["Menu"].tap()
+        app.buttons["menu-connections"].tap()
+        XCTAssertTrue(app.navigationBars["Connections"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["hostWorkspace"].exists)
+        capture(app, "Disconnected host returns to connections")
+    }
+
+    func testPhoneReportOpensFromAboutWithDeviceFacts() {
+        let app = XCUIApplication(); app.launch()
+        app.openFromMenu("about")
+        let open = app.buttons["openPhoneReport"]
+        for _ in 0..<6 where !(open.exists && open.isHittable) { app.swipeUp() }
+        open.tap()
+        let text = app.staticTexts["phoneReportText"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertTrue(text.label.hasPrefix("Keel phone report"), text.label)
+        XCTAssertTrue(text.label.contains("Device: "), text.label)
+        XCTAssertTrue(text.label.contains("Chat replies ("), text.label)
+        XCTAssertTrue(app.buttons["copyPhoneReport"].exists)
+        capture(app, "Phone report")
+    }
+
+    func testAboutScreenShowsVersionAndBundledLicenses() {
+        let app = XCUIApplication(); app.launch()
+        app.openFromMenu("about")
+        XCTAssertTrue(app.navigationBars["About Keel"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["aboutAppVersion"].waitForExistence(timeout: 5))
+        let notices = app.buttons["openThirdPartyNotices"]
+        for _ in 0..<6 where !(notices.exists && notices.isHittable) { app.swipeUp() }
+        XCTAssertTrue(notices.exists && notices.isHittable)
+        capture(app, "About Keel screen")
+        notices.tap()
+        let text = app.staticTexts["licenseDocumentText"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertTrue(text.label.contains("llama.cpp"))
+        capture(app, "Bundled third-party notices")
+    }
+
+    private func capture(_ app: XCUIApplication, _ name: String) {
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = name; image.lifetime = .keepAlways; add(image)
+    }
+}
